@@ -1,14 +1,18 @@
-use sqlx::SqlitePool;
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbErr, Statement};
 
-pub type Db = SqlitePool;
+pub type Db = DatabaseConnection;
 
-/// データベース接続プールを作成し、テーブルを初期化する
-pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
+/// データベース接続を作成し、テーブルを初期化する
+pub async fn init_db() -> Result<DatabaseConnection, DbErr> {
     // SQLiteデータベースファイルへの接続
-    let pool = SqlitePool::connect("sqlite:./app.db?mode=rwc").await?;
+    let db = Database::connect("sqlite:./app.db?mode=rwc").await?;
+
+    // テーブルの作成
+    let backend = sea_orm::DatabaseBackend::Sqlite;
 
     // ユーザーテーブルの作成
-    sqlx::query(
+    let stmt = Statement::from_sql_and_values(
+        backend,
         r#"
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY NOT NULL,
@@ -18,12 +22,13 @@ pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
             created_at TEXT NOT NULL
         )
         "#,
-    )
-    .execute(&pool)
-    .await?;
+        [],
+    );
+    db.execute(stmt).await?;
 
     // ツイートテーブルの作成
-    sqlx::query(
+    let stmt = Statement::from_sql_and_values(
+        backend,
         r#"
         CREATE TABLE IF NOT EXISTS tweets (
             id TEXT PRIMARY KEY NOT NULL,
@@ -33,18 +38,24 @@ pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
         "#,
-    )
-    .execute(&pool)
-    .await?;
+        [],
+    );
+    db.execute(stmt).await?;
 
     // インデックスの作成
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tweets_user_id ON tweets(user_id)")
-        .execute(&pool)
-        .await?;
+    let stmt = Statement::from_sql_and_values(
+        backend,
+        "CREATE INDEX IF NOT EXISTS idx_tweets_user_id ON tweets(user_id)",
+        [],
+    );
+    db.execute(stmt).await?;
 
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tweets_created_at ON tweets(created_at)")
-        .execute(&pool)
-        .await?;
+    let stmt = Statement::from_sql_and_values(
+        backend,
+        "CREATE INDEX IF NOT EXISTS idx_tweets_created_at ON tweets(created_at)",
+        [],
+    );
+    db.execute(stmt).await?;
 
-    Ok(pool)
+    Ok(db)
 }

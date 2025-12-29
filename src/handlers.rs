@@ -1,9 +1,13 @@
+use crate::entities::{tweet, user};
 use crate::error::AppError;
 use crate::models::*;
 use crate::store::Db;
 use crate::utils::{authenticate, create_jwt, hash_password, verify_password};
 use actix_web::{HttpRequest, HttpResponse, web};
 use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set,
+};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -11,9 +15,9 @@ type Result<T> = std::result::Result<T, AppError>;
 /// ユーザー登録
 pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Result<HttpResponse> {
     // メールアドレスの重複チェック
-    let existing = sqlx::query("SELECT id FROM users WHERE email = ?")
-        .bind(&req.email)
-        .fetch_optional(db.as_ref())
+    let existing = user::Entity::find()
+        .filter(user::Column::Email.eq(&req.email))
+        .one(db.as_ref())
         .await?;
 
     if existing.is_some() {
@@ -24,16 +28,17 @@ pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Res
     let user_id = Uuid::new_v4();
     let created_at = Utc::now();
 
-    sqlx::query(
-        "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(user_id.to_string())
-    .bind(&req.username)
-    .bind(&req.email)
-    .bind(&password_hash)
-    .bind(created_at.to_rfc3339())
-    .execute(db.as_ref())
-    .await?;
+    // SeaORMでユーザーを作成
+    let new_user = user::ActiveModel {
+        id: Set(user_id),
+        username: Set(req.username.clone()),
+        email: Set(req.email.clone()),
+        password_hash: Set(password_hash),
+        created_at: Set(created_at.to_rfc3339()),
+        ..Default::default()
+    };
+
+    new_user.insert(db.as_ref()).await?;
 
     let token = create_jwt(user_id)?;
 
@@ -49,29 +54,23 @@ pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Res
 
 /// ログイン
 pub async fn login(db: web::Data<Db>, req: web::Json<LoginRequest>) -> Result<HttpResponse> {
-    let row = sqlx::query("SELECT id, username, email, password_hash FROM users WHERE email = ?")
-        .bind(&req.email)
-        .fetch_optional(db.as_ref())
+    let user_model = user::Entity::find()
+        .filter(user::Column::Email.eq(&req.email))
+        .one(db.as_ref())
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid email or password".to_string()))?;
 
-    let user = User::from_row(&row)?;
-
-    if !verify_password(&req.password, &user.password_hash)? {
+    if !verify_password(&req.password, &user_model.password_hash)? {
         return Err(AppError::Unauthorized(
             "Invalid email or password".to_string(),
         ));
     }
 
-    let token = create_jwt(user.id)?;
+    let token = create_jwt(user_model.id)?;
 
     Ok(HttpResponse::Ok().json(AuthResponse {
         token,
-        user: UserResponse {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-        },
+        user: UserResponse::from(user_model),
     }))
 }
 
@@ -92,13 +91,16 @@ pub async fn create_tweet(
     let tweet_id = Uuid::new_v4();
     let created_at = Utc::now();
 
-    sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
-        .bind(tweet_id.to_string())
-        .bind(user_id.to_string())
-        .bind(&req.content)
-        .bind(created_at.to_rfc3339())
-        .execute(db.as_ref())
-        .await?;
+    // SeaORMでツイートを作成
+    let new_tweet = tweet::ActiveModel {
+        id: Set(tweet_id),
+        user_id: Set(user_id),
+        content: Set(req.content.clone()),
+        created_at: Set(created_at.to_rfc3339()),
+        ..Default::default()
+    };
+
+    new_tweet.insert(db.as_ref()).await?;
 
     Ok(HttpResponse::Created().json(TweetResponse {
         id: tweet_id,
@@ -110,33 +112,30 @@ pub async fn create_tweet(
 
 /// ツイート取得
 pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
-    let row = sqlx::query("SELECT id, user_id, content, created_at FROM tweets WHERE id = ?")
-        .bind(path.to_string())
-        .fetch_optional(db.as_ref())
+    let tweet_model = tweet::Entity::find_by_id(*path)
+        .one(db.as_ref())
         .await?
         .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
 
-    let tweet = Tweet::from_row(&row)?;
-
-    Ok(HttpResponse::Ok().json(TweetResponse::from(tweet)))
+    Ok(HttpResponse::Ok().json(TweetResponse::from(tweet_model)))
 }
 
 /// タイムライン取得
 pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<HttpResponse> {
     let user_id = authenticate(&req_http)?;
 
-    let rows = sqlx::query(
-        "SELECT id, user_id, content, created_at FROM tweets WHERE user_id = ? ORDER BY created_at DESC",
-    )
-    .bind(user_id.to_string())
-    .fetch_all(db.as_ref())
-    .await?;
+    let user = user::Entity::find_by_id(user_id)
+        .one(db.as_ref())
+        .await?
+        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-    let timeline: Vec<TweetResponse> = rows
-        .iter()
-        .filter_map(|row| Tweet::from_row(row).ok())
-        .map(TweetResponse::from)
-        .collect();
+    let tweets = user
+        .find_related(tweet::Entity)
+        .order_by_desc(tweet::Column::CreatedAt)
+        .all(db.as_ref())
+        .await?;
+
+    let timeline: Vec<TweetResponse> = tweets.into_iter().map(TweetResponse::from).collect();
 
     Ok(HttpResponse::Ok().json(timeline))
 }
