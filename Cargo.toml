@@ -4,4 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Actix Webフレームワーク: HTTPサーバー、ルーティング、ミドルウェア、非同期処理
 actix-web = "4"
+# Actixランタイム: 非同期ランタイム（#[actix_web::main]で使用）
+actix-rt = "2"
+# シリアライゼーション/デシリアライゼーション: 構造体をJSONなどに変換（derive機能でSerialize/Deserializeを使用可能）
+serde = { version = "1", features = ["derive"] }
+# JSON処理: JSON文字列とRust型の相互変換、json!マクロでJSONリテラル作成
+serde_json = "1"
+# 日時処理: 日時の作成・操作、タイムゾーン処理（serde機能でJSONとの相互変換が可能）
+chrono = { version = "0.4", features = ["serde"] }
+# UUID生成: ランダムUUID生成（v4）、JSONとの相互変換（serde機能）
+uuid = { version = "1", features = ["v4", "serde"] }
+# パスワードハッシュ化: パスワードの安全な保存、ハッシュの検証
+bcrypt = "0.15"
+# JWT認証: JSON Web Tokenの生成・検証、ログイン後の認証トークン管理
+jsonwebtoken = "9"
+# データバリデーション: リクエストデータの検証（derive機能でValidateを使用可能）
+validator = { version = "0.18", features = ["derive"] }
