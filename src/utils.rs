@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use actix_web::HttpRequest;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::{Duration, Utc};
@@ -6,26 +7,30 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// JWTのペイロード（クレーム）を表す構造体
-/// user_id: ユーザーID（文字列形式）
-/// exp: 有効期限（Unixタイムスタンプ）
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub user_id: String,
     pub exp: usize,
 }
 
-pub fn hash_password(password: &str) -> Result<String, bcrypt::BcryptError> {
-    // DEFAULT_COSTは10で、ハッシュ化の強度を表す
-    // 値が大きいほどセキュアだが、処理時間も長くなる
+/// パスワードをハッシュ化する
+pub fn hash_password(password: &str) -> Result<String, AppError> {
     hash(password, DEFAULT_COST)
+        .map_err(|_| AppError::Internal("Failed to hash password".to_string()))
 }
 
-pub fn verify_password(password: &str, hash: &str) -> Result<bool, bcrypt::BcryptError> {
-    verify(password, hash)
+/// パスワードを検証する
+pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
+    verify(password, hash).map_err(|_| AppError::Internal("Failed to verify password".to_string()))
 }
 
-pub fn create_jwt(user_id: Uuid) -> Result<String, jsonwebtoken::errors::Error> {
-    // 有効期限を24時間後に設定
+/// JWTシークレットキーを取得する
+fn get_jwt_secret() -> String {
+    std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string())
+}
+
+/// JWTトークンを生成する
+pub fn create_jwt(user_id: Uuid) -> Result<String, AppError> {
     let expiration = Utc::now()
         .checked_add_signed(Duration::hours(24))
         .expect("valid timestamp")
@@ -36,53 +41,46 @@ pub fn create_jwt(user_id: Uuid) -> Result<String, jsonwebtoken::errors::Error> 
         exp: expiration,
     };
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string());
+    let secret = get_jwt_secret();
 
-    // JWTトークンを生成
-    // Header::default() - デフォルトのヘッダー（HS256アルゴリズム）
-    // claims - ペイロード
-    // EncodingKey - エンコード用のキー
     encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(secret.as_ref()),
     )
+    .map_err(|_| AppError::Internal("Failed to create token".to_string()))
 }
 
-fn verify_jwt(token: &str) -> Result<Uuid, jsonwebtoken::errors::Error> {
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string());
+/// JWTトークンを検証してユーザーIDを取得する
+fn verify_jwt(token: &str) -> Result<Uuid, AppError> {
+    let secret = get_jwt_secret();
 
-    // JWTトークンをデコードして検証
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_ref()),
-        &Validation::new(Algorithm::HS256), // HS256アルゴリズムで検証
-    )?;
+        &Validation::new(Algorithm::HS256),
+    )
+    .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))?;
 
-    // クレームからユーザーIDを取得してUUIDに変換
     Uuid::parse_str(&token_data.claims.user_id)
-        .map_err(|_| jsonwebtoken::errors::ErrorKind::InvalidToken.into())
+        .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))
 }
 
-#[derive(Debug)]
-pub enum AuthError {
-    MissingHeader,
-    InvalidFormat,
-}
-
-fn bearer_token(req: &HttpRequest) -> Result<&str, AuthError> {
+/// AuthorizationヘッダーからBearerトークンを抽出する
+fn extract_bearer_token(req: &HttpRequest) -> Result<&str, AppError> {
     let header = req
         .headers()
         .get(actix_web::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .ok_or(AuthError::MissingHeader)?;
+        .ok_or_else(|| AppError::Unauthorized("Missing authorization header".to_string()))?;
 
     header
         .strip_prefix("Bearer ")
-        .ok_or(AuthError::InvalidFormat)
+        .ok_or_else(|| AppError::Unauthorized("Invalid authorization format".to_string()))
 }
 
-pub fn authenticate(req: &HttpRequest) -> Result<Uuid, AuthError> {
-    let token = bearer_token(req)?;
-    verify_jwt(token).map_err(|_| AuthError::InvalidFormat)
+/// リクエストからユーザーIDを認証して取得する
+pub fn authenticate(req: &HttpRequest) -> Result<Uuid, AppError> {
+    let token = extract_bearer_token(req)?;
+    verify_jwt(token)
 }

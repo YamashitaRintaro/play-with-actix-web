@@ -1,180 +1,142 @@
+use crate::error::AppError;
 use crate::models::*;
 use crate::store::Db;
 use crate::utils::{authenticate, create_jwt, hash_password, verify_password};
-use actix_web::{HttpRequest, HttpResponse, Responder, web};
+use actix_web::{HttpRequest, HttpResponse, web};
 use chrono::Utc;
 use uuid::Uuid;
 
-// ユーザー登録
-pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> impl Responder {
-    let app_state = db.lock().unwrap();
-    let mut users = app_state.users.lock().unwrap();
+type Result<T> = std::result::Result<T, AppError>;
 
-    // ユーザー名とメールアドレスの重複チェック
-    if users.iter().any(|u| u.email == req.email) {
-        return HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Email already exists"
-        }));
+/// ユーザー登録
+pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Result<HttpResponse> {
+    // メールアドレスの重複チェック
+    let existing = sqlx::query("SELECT id FROM users WHERE email = ?")
+        .bind(&req.email)
+        .fetch_optional(db.as_ref())
+        .await?;
+
+    if existing.is_some() {
+        return Err(AppError::BadRequest("Email already exists".to_string()));
     }
 
-    let password_hash = match hash_password(&req.password) {
-        Ok(hash) => hash,
-        Err(_) => {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to hash password"
-            }));
-        }
-    };
+    let password_hash = hash_password(&req.password)?;
+    let user_id = Uuid::new_v4();
+    let created_at = Utc::now();
 
-    let user = User {
-        id: Uuid::new_v4(),
-        username: req.username.clone(),
-        email: req.email.clone(),
-        password_hash,
-        created_at: Utc::now(),
-    };
+    sqlx::query(
+        "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(user_id.to_string())
+    .bind(&req.username)
+    .bind(&req.email)
+    .bind(&password_hash)
+    .bind(created_at.to_rfc3339())
+    .execute(db.as_ref())
+    .await?;
 
-    let user_id = user.id;
-    users.push(user.clone());
+    let token = create_jwt(user_id)?;
 
-    let token = match create_jwt(user_id) {
-        Ok(t) => t,
-        Err(_) => {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to create token"
-            }));
-        }
-    };
+    Ok(HttpResponse::Ok().json(AuthResponse {
+        token,
+        user: UserResponse {
+            id: user_id,
+            username: req.username.clone(),
+            email: req.email.clone(),
+        },
+    }))
+}
 
-    HttpResponse::Ok().json(AuthResponse {
+/// ログイン
+pub async fn login(db: web::Data<Db>, req: web::Json<LoginRequest>) -> Result<HttpResponse> {
+    let row = sqlx::query("SELECT id, username, email, password_hash FROM users WHERE email = ?")
+        .bind(&req.email)
+        .fetch_optional(db.as_ref())
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Invalid email or password".to_string()))?;
+
+    let user = User::from_row(&row)?;
+
+    if !verify_password(&req.password, &user.password_hash)? {
+        return Err(AppError::Unauthorized(
+            "Invalid email or password".to_string(),
+        ));
+    }
+
+    let token = create_jwt(user.id)?;
+
+    Ok(HttpResponse::Ok().json(AuthResponse {
         token,
         user: UserResponse {
             id: user.id,
             username: user.username,
             email: user.email,
         },
-    })
+    }))
 }
 
-// ログイン
-pub async fn login(db: web::Data<Db>, req: web::Json<LoginRequest>) -> impl Responder {
-    let app_state = db.lock().unwrap();
-    let users = app_state.users.lock().unwrap();
-
-    let user = match users.iter().find(|u| u.email == req.email) {
-        Some(u) => u,
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "error": "Invalid email or password"
-            }));
-        }
-    };
-
-    match verify_password(&req.password, &user.password_hash) {
-        Ok(true) => {
-            let token = match create_jwt(user.id) {
-                Ok(t) => t,
-                Err(_) => {
-                    return HttpResponse::InternalServerError().json(serde_json::json!({
-                        "error": "Failed to create token"
-                    }));
-                }
-            };
-
-            HttpResponse::Ok().json(AuthResponse {
-                token,
-                user: UserResponse {
-                    id: user.id,
-                    username: user.username.clone(),
-                    email: user.email.clone(),
-                },
-            })
-        }
-        _ => HttpResponse::Unauthorized().json(serde_json::json!({
-            "error": "Invalid email or password"
-        })),
-    }
-}
-
-// ツイート投稿
+/// ツイート投稿
 pub async fn create_tweet(
     req_http: HttpRequest,
     db: web::Data<Db>,
     req: web::Json<CreateTweetRequest>,
-) -> impl Responder {
-    let user_id = match authenticate(&req_http) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "error": "Unauthorized"
-            }));
-        }
-    };
+) -> Result<HttpResponse> {
+    let user_id = authenticate(&req_http)?;
 
     if req.content.is_empty() || req.content.len() > 280 {
-        return HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Tweet content must be between 1 and 280 characters"
-        }));
+        return Err(AppError::BadRequest(
+            "Tweet content must be between 1 and 280 characters".to_string(),
+        ));
     }
 
-    let tweet = Tweet {
-        id: Uuid::new_v4(),
+    let tweet_id = Uuid::new_v4();
+    let created_at = Utc::now();
+
+    sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
+        .bind(tweet_id.to_string())
+        .bind(user_id.to_string())
+        .bind(&req.content)
+        .bind(created_at.to_rfc3339())
+        .execute(db.as_ref())
+        .await?;
+
+    Ok(HttpResponse::Created().json(TweetResponse {
+        id: tweet_id,
         user_id,
         content: req.content.clone(),
-        created_at: Utc::now(),
-    };
-
-    let app_state = db.lock().unwrap();
-    let mut tweets = app_state.tweets.lock().unwrap();
-    tweets.push(tweet.clone());
-
-    HttpResponse::Created().json(TweetResponse {
-        id: tweet.id,
-        user_id: tweet.user_id,
-        content: tweet.content,
-        created_at: tweet.created_at,
-    })
+        created_at,
+    }))
 }
 
-// ツイート取得
-pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> impl Responder {
-    let app_state = db.lock().unwrap();
-    let tweets = app_state.tweets.lock().unwrap();
+/// ツイート取得
+pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
+    let row = sqlx::query("SELECT id, user_id, content, created_at FROM tweets WHERE id = ?")
+        .bind(path.to_string())
+        .fetch_optional(db.as_ref())
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
 
-    match tweets.iter().find(|t| t.id == *path) {
-        Some(tweet) => HttpResponse::Ok().json(TweetResponse {
-            id: tweet.id,
-            user_id: tweet.user_id,
-            content: tweet.content.clone(),
-            created_at: tweet.created_at,
-        }),
-        None => HttpResponse::NotFound().json(serde_json::json!({
-            "error": "Tweet not found"
-        })),
-    }
+    let tweet = Tweet::from_row(&row)?;
+
+    Ok(HttpResponse::Ok().json(TweetResponse::from(tweet)))
 }
 
-// タイムライン取得
-pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> impl Responder {
-    let user_id = match authenticate(&req_http) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "error": "Unauthorized"
-            }));
-        }
-    };
-    let app_state = db.lock().unwrap();
-    let tweets = app_state.tweets.lock().unwrap();
-    let timeline: Vec<TweetResponse> = tweets
+/// タイムライン取得
+pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<HttpResponse> {
+    let user_id = authenticate(&req_http)?;
+
+    let rows = sqlx::query(
+        "SELECT id, user_id, content, created_at FROM tweets WHERE user_id = ? ORDER BY created_at DESC",
+    )
+    .bind(user_id.to_string())
+    .fetch_all(db.as_ref())
+    .await?;
+
+    let timeline: Vec<TweetResponse> = rows
         .iter()
-        .filter(|t| t.user_id == user_id)
-        .map(|t| TweetResponse {
-            id: t.id,
-            user_id: t.user_id,
-            content: t.content.clone(),
-            created_at: t.created_at,
-        })
+        .filter_map(|row| Tweet::from_row(row).ok())
+        .map(TweetResponse::from)
         .collect();
-    HttpResponse::Ok().json(timeline)
+
+    Ok(HttpResponse::Ok().json(timeline))
 }

@@ -1,16 +1,25 @@
+mod error;
 mod handlers;
 mod models;
 mod store;
 mod utils;
 
 use actix_web::{App, HttpServer, web};
-use std::sync::{Arc, Mutex};
-use store::AppState;
+use store::init_db;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let app_state = AppState::new();
-    let db = Arc::new(Mutex::new(app_state));
+    // データベース接続プールを初期化
+    let db = match init_db().await {
+        Ok(pool) => {
+            println!("Database initialized successfully");
+            pool
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize database: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     HttpServer::new(move || {
         App::new()

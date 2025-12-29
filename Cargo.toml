@@ -22,3 +22,5 @@ bcrypt = "0.15"
 jsonwebtoken = "9"
 # データバリデーション: リクエストデータの検証（derive機能でValidateを使用可能）
 validator = { version = "0.18", features = ["derive"] }
+# SQLiteデータベース: 非同期SQLクエリビルダー、型安全なSQLクエリ実行
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
