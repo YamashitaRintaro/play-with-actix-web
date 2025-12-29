@@ -14,7 +14,8 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::from(db.clone()))
+            .app_data(web::Data::new(db.clone()))
+            .app_data(web::JsonConfig::default().limit(4096))
             .route("/api/register", web::post().to(handlers::register))
             .route("/api/login", web::post().to(handlers::login))
             .route("/api/tweets", web::post().to(handlers::create_tweet))
