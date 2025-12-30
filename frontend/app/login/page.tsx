@@ -1,36 +1,11 @@
 "use client";
 
-import { useAuth } from "@/lib/auth-context";
-import { login } from "@/lib/api";
+import { login } from "@/app/actions/auth";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useActionState } from "react";
 
 export default function LoginPage() {
-  const { login: authLogin } = useAuth();
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-
-    setIsSubmitting(true);
-    setError("");
-
-    try {
-      const response = await login({ email, password });
-      authLogin(response.user, response.token);
-      router.push("/");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "ログインに失敗しました");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const [state, action, pending] = useActionState(login, undefined);
 
   return (
     <main className="min-h-screen flex items-center justify-center py-12 px-4">
@@ -40,18 +15,17 @@ export default function LoginPage() {
             🐦 Twitter Clone
           </h1>
 
-          {error && (
+          {state?.error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-danger text-sm">
-              {error}
+              {state.error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form action={action} className="space-y-5">
             <div>
               <input
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                name="email"
                 placeholder="メールアドレス"
                 required
                 className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
@@ -60,8 +34,7 @@ export default function LoginPage() {
             <div>
               <input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                name="password"
                 placeholder="パスワード"
                 required
                 className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
@@ -69,10 +42,10 @@ export default function LoginPage() {
             </div>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={pending}
               className="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isSubmitting ? "ログイン中..." : "ログイン"}
+              {pending ? "ログイン中..." : "ログイン"}
             </button>
           </form>
 
@@ -90,4 +63,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
