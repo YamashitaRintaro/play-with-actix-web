@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::models::*;
 use crate::store::Db;
 use crate::utils::{authenticate, create_jwt, hash_password, verify_password};
-use actix_web::{HttpRequest, HttpResponse, Responder, http::header, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, web};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set,
@@ -129,14 +129,14 @@ pub async fn register_form(
     match register_user(db.as_ref(), &form.username, &form.email, &form.password).await {
         Ok((_, token)) => {
             // Cookieを設定してリダイレクト
+            let cookie = actix_web::cookie::Cookie::build("token", token)
+                .path("/")
+                .max_age(actix_web::cookie::time::Duration::days(1))
+                .finish();
+            // web::Redirectと同じ303 See Otherステータスを使用
             Ok(HttpResponse::SeeOther()
-                .cookie(
-                    actix_web::cookie::Cookie::build("token", token)
-                        .path("/")
-                        .max_age(actix_web::cookie::time::Duration::days(1))
-                        .finish(),
-                )
-                .append_header((header::LOCATION, "/"))
+                .cookie(cookie)
+                .insert_header((actix_web::http::header::LOCATION, "/"))
                 .finish())
         }
         Err(e) => {
@@ -166,14 +166,14 @@ pub async fn login_form(
     match login_user(db.as_ref(), &form.email, &form.password).await {
         Ok((_, token)) => {
             // Cookieを設定してリダイレクト
+            let cookie = actix_web::cookie::Cookie::build("token", token)
+                .path("/")
+                .max_age(actix_web::cookie::time::Duration::days(1))
+                .finish();
+            // web::Redirectと同じ303 See Otherステータスを使用
             Ok(HttpResponse::SeeOther()
-                .cookie(
-                    actix_web::cookie::Cookie::build("token", token)
-                        .path("/")
-                        .max_age(actix_web::cookie::time::Duration::days(1))
-                        .finish(),
-                )
-                .append_header((header::LOCATION, "/"))
+                .cookie(cookie)
+                .insert_header((actix_web::http::header::LOCATION, "/"))
                 .finish())
         }
         Err(e) => {
@@ -194,6 +194,33 @@ fn get_user_id_from_request(req: &HttpRequest) -> actix_web::Result<Uuid> {
     } else {
         Err(actix_web::error::ErrorUnauthorized("Not logged in"))
     }
+}
+
+/// ログアウト（JSON API）
+pub async fn logout() -> Result<HttpResponse> {
+    // Cookieを削除
+    let mut cookie = actix_web::cookie::Cookie::build("token", "")
+        .path("/")
+        .finish();
+    cookie.make_removal();
+
+    Ok(HttpResponse::Ok()
+        .cookie(cookie)
+        .json(serde_json::json!({ "message": "Logged out successfully" })))
+}
+
+/// フォームからのログアウト
+pub async fn logout_form() -> actix_web::Result<HttpResponse> {
+    // Cookieを削除
+    let mut cookie = actix_web::cookie::Cookie::build("token", "")
+        .path("/")
+        .finish();
+    cookie.make_removal();
+
+    Ok(HttpResponse::SeeOther()
+        .cookie(cookie)
+        .insert_header((actix_web::http::header::LOCATION, "/login"))
+        .finish())
 }
 
 /// ツイート投稿（JSON API）
@@ -340,6 +367,9 @@ pub async fn index_page(
             .collect();
         context.insert("tweets", &tweets_data);
         context.insert("current_user_id", &user_id.to_string());
+        context.insert("is_logged_in", &true);
+    } else {
+        context.insert("is_logged_in", &false);
     }
 
     crate::templates::render_template(&tera, "index.html", context)

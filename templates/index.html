@@ -1,6 +1,13 @@
 {% extends "base.html" %} {% block title %}Twitter Clone{% endblock %} {% block
 body_class %}index-page{% endblock %} {% block content %}
-<h1>🐦 Twitter Clone</h1>
+<div class="header">
+  <h1>🐦 Twitter Clone</h1>
+  {% if is_logged_in %}
+  <form action="/logout" method="POST" style="display: inline">
+    <button type="submit" class="logout-btn">ログアウト</button>
+  </form>
+  {% endif %}
+</div>
 
 {% if error %}
 <div class="error">{{ error }}</div>
@@ -29,7 +36,7 @@ body_class %}index-page{% endblock %} {% block content %}
       <form
         action="/tweets/{{ tweet.id }}/delete"
         method="POST"
-        style="display: inline;"
+        style="display: inline"
         onsubmit="return confirm('このツイートを削除しますか？');"
       >
         <button type="submit" class="delete-btn" title="削除">🗑️</button>
