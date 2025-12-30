@@ -2,3 +2,6 @@
 *.db
 *.db-shm
 *.db-wal
+
+/frontend/node_modules
+/backend/target

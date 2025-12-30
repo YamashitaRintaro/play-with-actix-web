@@ -3,13 +3,11 @@ mod error;
 mod handlers;
 mod models;
 mod store;
-mod templates;
 mod utils;
 
-use actix_files::Files;
-use actix_web::{App, HttpServer, web};
+use actix_cors::Cors;
+use actix_web::{App, HttpServer, http::header, web};
 use store::init_db;
-use templates::init_tera;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -25,27 +23,19 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Teraテンプレートエンジンの初期化
-    let tera = init_tera();
-
     HttpServer::new(move || {
+        // CORS設定: Next.jsフロントエンド（localhost:3000）からのアクセスを許可
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:3000")
+            .allowed_methods(vec!["GET", "POST", "DELETE"])
+            .allowed_headers(vec![header::AUTHORIZATION, header::CONTENT_TYPE])
+            .supports_credentials()
+            .max_age(3600);
+
         App::new()
+            .wrap(cors)
             .app_data(web::Data::new(db.clone()))
-            .app_data(web::Data::new(tera.clone()))
             .app_data(web::JsonConfig::default().limit(4096))
-            // HTMLページ
-            .route("/", web::get().to(handlers::index_page))
-            .route("/login", web::get().to(handlers::login_page))
-            .route("/register", web::get().to(handlers::register_page))
-            // フォーム送信用のエンドポイント
-            .route("/login", web::post().to(handlers::login_form))
-            .route("/register", web::post().to(handlers::register_form))
-            .route("/logout", web::post().to(handlers::logout_form))
-            .route("/tweets", web::post().to(handlers::create_tweet_form))
-            .route(
-                "/tweets/{id}/delete",
-                web::post().to(handlers::delete_tweet_form),
-            )
             // APIエンドポイント（JSON）
             .route("/api/register", web::post().to(handlers::register))
             .route("/api/login", web::post().to(handlers::login))
@@ -54,8 +44,6 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tweets/{id}", web::get().to(handlers::get_tweet))
             .route("/api/tweets/{id}", web::delete().to(handlers::delete_tweet))
             .route("/api/timeline", web::get().to(handlers::get_timeline))
-            // 静的ファイル配信
-            .service(Files::new("/static", "./static"))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
