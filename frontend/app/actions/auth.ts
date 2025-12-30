@@ -16,26 +16,28 @@ export interface AuthState {
   error?: string;
 }
 
-/** ユーザー登録 */
-export async function register(
-  _prevState: AuthState | undefined,
-  formData: FormData
+// 型定義
+interface RegisterInput {
+  username: string;
+  email: string;
+  password: string;
+}
+
+interface LoginInput {
+  email: string;
+  password: string;
+}
+
+// 内部関数（型付き引数、テスト可能）
+async function registerUser(
+  input: RegisterInput
 ): Promise<AuthState | undefined> {
   const client = createClient();
 
-  const variables: RegisterMutationVariables = {
-    input: {
-      username: formData.get("username") as string,
-      email: formData.get("email") as string,
-      password: formData.get("password") as string,
-    },
-  };
-
   const result = await client
-    .mutation<RegisterMutation, RegisterMutationVariables>(
-      RegisterDocument,
-      variables
-    )
+    .mutation<RegisterMutation, RegisterMutationVariables>(RegisterDocument, {
+      input,
+    })
     .toPromise();
 
   if (result.error) {
@@ -52,25 +54,14 @@ export async function register(
     token
   );
 
-  redirect("/");
+  return undefined;
 }
 
-/** ログイン */
-export async function login(
-  _prevState: AuthState | undefined,
-  formData: FormData
-): Promise<AuthState | undefined> {
+async function loginUser(input: LoginInput): Promise<AuthState | undefined> {
   const client = createClient();
 
-  const variables: LoginMutationVariables = {
-    input: {
-      email: formData.get("email") as string,
-      password: formData.get("password") as string,
-    },
-  };
-
   const result = await client
-    .mutation<LoginMutation, LoginMutationVariables>(LoginDocument, variables)
+    .mutation<LoginMutation, LoginMutationVariables>(LoginDocument, { input })
     .toPromise();
 
   if (result.error) {
@@ -86,6 +77,49 @@ export async function login(
     { id: user.id, username: user.username, email: user.email },
     token
   );
+
+  return undefined;
+}
+
+/** ユーザー登録 */
+export async function register(
+  _prevState: AuthState | undefined,
+  formData: FormData
+): Promise<AuthState | undefined> {
+  const username = formData.get("username")?.toString().trim();
+  const email = formData.get("email")?.toString().trim();
+  const password = formData.get("password")?.toString();
+
+  if (!username || !email || !password) {
+    return { error: "すべての項目を入力してください" };
+  }
+
+  const result = await registerUser({ username, email, password });
+
+  if (result?.error) {
+    return result;
+  }
+
+  redirect("/");
+}
+
+/** ログイン */
+export async function login(
+  _prevState: AuthState | undefined,
+  formData: FormData
+): Promise<AuthState | undefined> {
+  const email = formData.get("email")?.toString().trim();
+  const password = formData.get("password")?.toString();
+
+  if (!email || !password) {
+    return { error: "メールアドレスとパスワードを入力してください" };
+  }
+
+  const result = await loginUser({ email, password });
+
+  if (result?.error) {
+    return result;
+  }
 
   redirect("/");
 }
