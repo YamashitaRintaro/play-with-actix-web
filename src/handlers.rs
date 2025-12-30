@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::models::*;
 use crate::store::Db;
 use crate::utils::{authenticate, create_jwt, hash_password, verify_password};
-use actix_web::{HttpRequest, HttpResponse, http::header, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, http::header, web};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set,
@@ -213,17 +213,12 @@ pub async fn create_tweet_form(
     req_http: HttpRequest,
     db: web::Data<Db>,
     form: web::Form<CreateTweetRequest>,
-) -> actix_web::Result<HttpResponse> {
+) -> actix_web::Result<impl Responder> {
     let user_id = get_user_id_from_request(&req_http)?;
 
     match create_tweet_internal(db.as_ref(), user_id, &form.content).await {
-        Ok(_) => {
-            // リダイレクト
-            Ok(HttpResponse::SeeOther()
-                .append_header((header::LOCATION, "/"))
-                .finish())
-        }
-        Err(e) => Ok(HttpResponse::BadRequest().body(e.to_string())),
+        Ok(_) => Ok(web::Redirect::to("/").see_other()),
+        Err(_) => Ok(web::Redirect::to("/").see_other()),
     }
 }
 
@@ -237,7 +232,7 @@ pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpR
     Ok(HttpResponse::Ok().json(TweetResponse::from(tweet_model)))
 }
 
-// ツイート削除
+// ツイート削除（JSON API）
 pub async fn delete_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
     let tweet_model = tweet::Entity::find_by_id(*path)
         .one(db.as_ref())
@@ -247,6 +242,44 @@ pub async fn delete_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<Ht
     tweet_model.delete(db.as_ref()).await?;
 
     Ok(HttpResponse::NoContent().finish())
+}
+
+/// フォームからのツイート削除
+pub async fn delete_tweet_form(
+    req_http: HttpRequest,
+    db: web::Data<Db>,
+    path: web::Path<Uuid>,
+) -> actix_web::Result<impl Responder> {
+    // 認証チェック
+    let user_id = match get_user_id_from_request(&req_http) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(web::Redirect::to("/login").see_other());
+        }
+    };
+
+    // ツイートを取得して、所有者か確認
+    let tweet_model = match tweet::Entity::find_by_id(*path)
+        .one(db.as_ref())
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+    {
+        Some(tweet) => tweet,
+        None => {
+            return Ok(web::Redirect::to("/").see_other());
+        }
+    };
+
+    // 所有者のみ削除可能
+    if tweet_model.user_id != user_id {
+        return Ok(web::Redirect::to("/").see_other());
+    }
+
+    // 削除実行
+    let _ = tweet_model.delete(db.as_ref()).await;
+
+    // トップページにリダイレクト
+    Ok(web::Redirect::to("/").see_other())
 }
 
 /// タイムライン取得
@@ -268,8 +301,6 @@ pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<Ht
 
     Ok(HttpResponse::Ok().json(timeline))
 }
-
-// HTMLレンダリング用のハンドラー
 
 /// トップページ（タイムライン）
 pub async fn index_page(
@@ -300,12 +331,15 @@ pub async fn index_page(
             .into_iter()
             .map(|t| {
                 serde_json::json!({
+                    "id": t.id.to_string(),
+                    "user_id": t.user_id.to_string(),
                     "content": t.content,
                     "created_at": t.created_at,
                 })
             })
             .collect();
         context.insert("tweets", &tweets_data);
+        context.insert("current_user_id", &user_id.to_string());
     }
 
     crate::templates::render_template(&tera, "index.html", context)

@@ -23,7 +23,19 @@ body_class %}index-page{% endblock %} {% block content %}
   <h2>タイムライン</h2>
   {% if tweets %} {% for tweet in tweets %}
   <div class="tweet">
-    <div class="tweet-content">{{ tweet.content }}</div>
+    <div class="tweet-header">
+      <div class="tweet-content">{{ tweet.content }}</div>
+      {% if current_user_id and tweet.user_id == current_user_id %}
+      <form
+        action="/tweets/{{ tweet.id }}/delete"
+        method="POST"
+        style="display: inline;"
+        onsubmit="return confirm('このツイートを削除しますか？');"
+      >
+        <button type="submit" class="delete-btn" title="削除">🗑️</button>
+      </form>
+      {% endif %}
+    </div>
     <div class="tweet-meta">
       {{ tweet.created_at | date(format="%Y-%m-%d %H:%M") }}
     </div>

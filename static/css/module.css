@@ -73,15 +73,39 @@ textarea {
   border-bottom: none;
 }
 
+.tweet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
 .tweet-content {
   margin: 10px 0;
   font-size: 16px;
   line-height: 1.5;
+  flex: 1;
 }
 
 .tweet-meta {
   color: #657786;
   font-size: 14px;
+}
+
+.delete-btn {
+  background-color: transparent;
+  color: #657786;
+  border: none;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.delete-btn:hover {
+  background-color: #fee;
+  color: #e0245e;
 }
 
 /* ログイン・登録ページ用 */

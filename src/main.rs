@@ -41,6 +41,10 @@ async fn main() -> std::io::Result<()> {
             .route("/login", web::post().to(handlers::login_form))
             .route("/register", web::post().to(handlers::register_form))
             .route("/tweets", web::post().to(handlers::create_tweet_form))
+            .route(
+                "/tweets/{id}/delete",
+                web::post().to(handlers::delete_tweet_form),
+            )
             // APIエンドポイント（JSON）
             .route("/api/register", web::post().to(handlers::register))
             .route("/api/login", web::post().to(handlers::login))
