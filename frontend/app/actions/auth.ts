@@ -5,10 +5,10 @@ import {
   LoginDocument,
   RegisterDocument,
   type LoginMutation,
+  type LoginMutationVariables,
   type RegisterMutation,
-  type RegisterInput,
-  type LoginInput,
-} from "@/lib/graphql/generated/urql";
+  type RegisterMutationVariables,
+} from "@/lib/graphql/generated/graphql";
 import { createSession, deleteSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
@@ -23,15 +23,20 @@ export async function register(
 ): Promise<AuthState | undefined> {
   const client = createClient();
 
-  const input: RegisterInput = {
-    username: formData.get("username") as string,
-    email: formData.get("email") as string,
-    password: formData.get("password") as string,
+  const variables: RegisterMutationVariables = {
+    input: {
+      username: formData.get("username") as string,
+      email: formData.get("email") as string,
+      password: formData.get("password") as string,
+    },
   };
 
-  const result = await client.mutation<RegisterMutation>(RegisterDocument, {
-    input,
-  });
+  const result = await client
+    .mutation<RegisterMutation, RegisterMutationVariables>(
+      RegisterDocument,
+      variables
+    )
+    .toPromise();
 
   if (result.error) {
     return { error: result.error.message };
@@ -57,12 +62,16 @@ export async function login(
 ): Promise<AuthState | undefined> {
   const client = createClient();
 
-  const input: LoginInput = {
-    email: formData.get("email") as string,
-    password: formData.get("password") as string,
+  const variables: LoginMutationVariables = {
+    input: {
+      email: formData.get("email") as string,
+      password: formData.get("password") as string,
+    },
   };
 
-  const result = await client.mutation<LoginMutation>(LoginDocument, { input });
+  const result = await client
+    .mutation<LoginMutation, LoginMutationVariables>(LoginDocument, variables)
+    .toPromise();
 
   if (result.error) {
     return { error: result.error.message };

@@ -15,26 +15,62 @@ type Result<T> = std::result::Result<T, AppError>;
 
 // GraphQLハンドラー
 
-/// GraphQLエンドポイント
+/// Authorizationヘッダーからユーザーを認証し、リクエストにユーザーIDを追加
+fn authenticate_request(
+    req: &HttpRequest,
+    mut request: async_graphql::Request,
+) -> async_graphql::Request {
+    if let Some(user_id) = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .and_then(|token| verify_jwt(token).ok())
+    {
+        request = request.data(user_id);
+    }
+    request
+}
+
+/// GraphQLエンドポイント (POST)
 pub async fn graphql_handler(
     schema: web::Data<AppSchema>,
     req: HttpRequest,
     gql_req: GraphQLRequest,
 ) -> GraphQLResponse {
-    let mut request = gql_req.into_inner();
+    let request = authenticate_request(&req, gql_req.into_inner());
+    schema.execute(request).await.into()
+}
 
-    // 認証トークンからユーザーIDを取得してコンテキストに追加
-    if let Some(auth_header) = req.headers().get("Authorization") {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                if let Ok(user_id) = verify_jwt(token) {
-                    request = request.data(user_id);
-                }
-            }
+/// GraphQLエンドポイント (GET) - クエリパラメータからGraphQLリクエストを処理
+pub async fn graphql_handler_get(
+    schema: web::Data<AppSchema>,
+    req: HttpRequest,
+    query: web::Query<GraphQLQueryParams>,
+) -> GraphQLResponse {
+    let mut request = async_graphql::Request::new(&query.query);
+
+    if let Some(ref op_name) = query.operation_name {
+        request = request.operation_name(op_name);
+    }
+
+    if let Some(ref vars) = query.variables {
+        match serde_json::from_str(vars) {
+            Ok(variables) => request = request.variables(variables),
+            Err(e) => eprintln!("Failed to parse GraphQL variables: {}", e),
         }
     }
 
+    let request = authenticate_request(&req, request);
     schema.execute(request).await.into()
+}
+
+#[derive(serde::Deserialize)]
+pub struct GraphQLQueryParams {
+    query: String,
+    #[serde(rename = "operationName")]
+    operation_name: Option<String>,
+    variables: Option<String>,
 }
 
 /// GraphQL Playgroundエンドポイント

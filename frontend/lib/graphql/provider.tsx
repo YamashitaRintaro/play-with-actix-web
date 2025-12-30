@@ -1,8 +1,7 @@
 "use client";
 
-import { UrqlProvider } from "@urql/next";
-import { cacheExchange, createClient, fetchExchange, ssrExchange } from "urql";
 import { useMemo } from "react";
+import { Provider, cacheExchange, createClient, fetchExchange } from "urql";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -12,11 +11,7 @@ interface GraphQLProviderProps {
 }
 
 export function GraphQLProvider({ children, token }: GraphQLProviderProps) {
-  const [client, ssr] = useMemo(() => {
-    const ssr = ssrExchange({
-      isClient: typeof window !== "undefined",
-    });
-
+  const client = useMemo(() => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -25,19 +20,12 @@ export function GraphQLProvider({ children, token }: GraphQLProviderProps) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const client = createClient({
+    return createClient({
       url: `${API_URL}/graphql`,
-      exchanges: [cacheExchange, ssr, fetchExchange],
-      fetchOptions: { headers },
-      suspense: true,
+      exchanges: [cacheExchange, fetchExchange],
+      fetchOptions: { method: "POST", headers },
     });
-
-    return [client, ssr];
   }, [token]);
 
-  return (
-    <UrqlProvider client={client} ssr={ssr}>
-      {children}
-    </UrqlProvider>
-  );
+  return <Provider value={client}>{children}</Provider>;
 }

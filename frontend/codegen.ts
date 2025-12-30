@@ -21,7 +21,7 @@ const config: CodegenConfig = {
       plugins: ["typescript", "typescript-operations", "typescript-urql"],
       config: {
         withHooks: true,
-        urqlImportFrom: "@urql/next",
+        urqlImportFrom: "urql",
         scalars: {
           UUID: "string",
         },

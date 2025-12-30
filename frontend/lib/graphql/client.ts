@@ -18,6 +18,6 @@ export function createClient(token?: string | null) {
   return new Client({
     url: `${API_URL}/graphql`,
     exchanges: [cacheExchange, fetchExchange],
-    fetchOptions: () => ({ headers }),
+    fetchOptions: () => ({ method: "POST", headers }),
   });
 }

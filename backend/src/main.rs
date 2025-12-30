@@ -44,6 +44,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::JsonConfig::default().limit(4096))
             // GraphQLエンドポイント
             .route("/graphql", web::post().to(handlers::graphql_handler))
+            .route("/graphql", web::get().to(handlers::graphql_handler_get))
             .route("/graphiql", web::get().to(handlers::graphiql_handler))
             // REST APIエンドポイント（後方互換性のため残す）
             .route("/api/register", web::post().to(handlers::register))
