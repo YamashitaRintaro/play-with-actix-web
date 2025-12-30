@@ -1,6 +1,6 @@
 import "server-only";
 
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import type { User } from "./types";
 
@@ -13,11 +13,15 @@ interface SessionPayload {
   user: User;
   token: string;
   expiresAt: Date;
-  [key: string]: unknown; // JWTPayload互換のためのインデックスシグネチャ
 }
 
 /** セッションを暗号化 */
-export async function encrypt(payload: SessionPayload): Promise<string> {
+async function encrypt(
+  user: User,
+  token: string,
+  expiresAt: Date
+): Promise<string> {
+  const payload: JWTPayload = { user, token, expiresAt };
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -26,7 +30,7 @@ export async function encrypt(payload: SessionPayload): Promise<string> {
 }
 
 /** セッションを復号 */
-export async function decrypt(session: string): Promise<SessionPayload | null> {
+async function decrypt(session: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify<SessionPayload>(session, ENCODED_KEY, {
       algorithms: ["HS256"],
@@ -40,7 +44,7 @@ export async function decrypt(session: string): Promise<SessionPayload | null> {
 /** セッションを作成してCookieに保存 */
 export async function createSession(user: User, token: string): Promise<void> {
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const session = await encrypt({ user, token, expiresAt });
+  const session = await encrypt(user, token, expiresAt);
 
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, session, {
