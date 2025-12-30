@@ -239,6 +239,18 @@ pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpR
     Ok(HttpResponse::Ok().json(TweetResponse::from(tweet_model)))
 }
 
+// ツイート削除
+pub async fn delete_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
+    let tweet_model = tweet::Entity::find_by_id(*path)
+        .one(db.as_ref())
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
+
+    tweet_model.delete(db.as_ref()).await?;
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
 /// タイムライン取得
 pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<HttpResponse> {
     let user_id = authenticate(&req_http)?;
@@ -278,28 +290,24 @@ pub async fn index_page(
         None
     };
 
-    if let Some(user_id) = user_id {
-        if let Ok(user) = user::Entity::find_by_id(user_id).one(db.as_ref()).await {
-            if let Some(user) = user {
-                if let Ok(tweets) = user
-                    .find_related(tweet::Entity)
-                    .order_by_desc(tweet::Column::CreatedAt)
-                    .all(db.as_ref())
-                    .await
-                {
-                    let tweets_data: Vec<serde_json::Value> = tweets
-                        .into_iter()
-                        .map(|t| {
-                            serde_json::json!({
-                                "content": t.content,
-                                "created_at": t.created_at,
-                            })
-                        })
-                        .collect();
-                    context.insert("tweets", &tweets_data);
-                }
-            }
-        }
+    if let Some(user_id) = user_id
+        && let Ok(Some(user)) = user::Entity::find_by_id(user_id).one(db.as_ref()).await
+        && let Ok(tweets) = user
+            .find_related(tweet::Entity)
+            .order_by_desc(tweet::Column::CreatedAt)
+            .all(db.as_ref())
+            .await
+    {
+        let tweets_data: Vec<serde_json::Value> = tweets
+            .into_iter()
+            .map(|t| {
+                serde_json::json!({
+                    "content": t.content,
+                    "created_at": t.created_at,
+                })
+            })
+            .collect();
+        context.insert("tweets", &tweets_data);
     }
 
     crate::templates::render_template(&tera, "index.html", context)

@@ -46,6 +46,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/login", web::post().to(handlers::login))
             .route("/api/tweets", web::post().to(handlers::create_tweet))
             .route("/api/tweets/{id}", web::get().to(handlers::get_tweet))
+            .route("/api/tweets/{id}", web::delete().to(handlers::delete_tweet))
             .route("/api/timeline", web::get().to(handlers::get_timeline))
             // 静的ファイル配信
             .service(Files::new("/static", "./static"))
