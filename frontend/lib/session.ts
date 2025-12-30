@@ -9,15 +9,16 @@ const SECRET_KEY =
 const ENCODED_KEY = new TextEncoder().encode(SECRET_KEY);
 const COOKIE_NAME = "session";
 
-export interface SessionPayload {
+interface SessionPayload {
   user: User;
-  token: string; // バックエンドのJWT
+  token: string;
   expiresAt: Date;
+  [key: string]: unknown; // JWTPayload互換のためのインデックスシグネチャ
 }
 
 /** セッションを暗号化 */
 export async function encrypt(payload: SessionPayload): Promise<string> {
-  return new SignJWT(payload as unknown as Record<string, unknown>)
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("1d")
@@ -27,10 +28,10 @@ export async function encrypt(payload: SessionPayload): Promise<string> {
 /** セッションを復号 */
 export async function decrypt(session: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(session, ENCODED_KEY, {
+    const { payload } = await jwtVerify<SessionPayload>(session, ENCODED_KEY, {
       algorithms: ["HS256"],
     });
-    return payload as unknown as SessionPayload;
+    return payload;
   } catch {
     return null;
   }
