@@ -1,0 +1,12 @@
+fragment UserFields on UserType {
+  id
+  username
+  email
+}
+
+fragment TweetFields on TweetType {
+  id
+  userId
+  content
+  createdAt
+}

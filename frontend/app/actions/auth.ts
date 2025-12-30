@@ -1,8 +1,15 @@
 "use server";
 
-import { publicApi, ApiError } from "@/lib/fetcher";
+import { createClient } from "@/lib/graphql/client";
+import {
+  LoginDocument,
+  RegisterDocument,
+  type LoginMutation,
+  type RegisterMutation,
+  type RegisterInput,
+  type LoginInput,
+} from "@/lib/graphql/generated/urql";
 import { createSession, deleteSession } from "@/lib/session";
-import type { AuthResponse } from "@/lib/types";
 import { redirect } from "next/navigation";
 
 export interface AuthState {
@@ -14,23 +21,31 @@ export async function register(
   _prevState: AuthState | undefined,
   formData: FormData
 ): Promise<AuthState | undefined> {
-  try {
-    const data = await publicApi<AuthResponse>("/api/register", {
-      method: "POST",
-      body: {
-        username: formData.get("username"),
-        email: formData.get("email"),
-        password: formData.get("password"),
-      },
-    });
+  const client = createClient();
 
-    await createSession(data.user, data.token);
-  } catch (e) {
-    if (e instanceof ApiError) {
-      return { error: e.message };
-    }
+  const input: RegisterInput = {
+    username: formData.get("username") as string,
+    email: formData.get("email") as string,
+    password: formData.get("password") as string,
+  };
+
+  const result = await client.mutation<RegisterMutation>(RegisterDocument, {
+    input,
+  });
+
+  if (result.error) {
+    return { error: result.error.message };
+  }
+
+  if (!result.data) {
     return { error: "登録に失敗しました" };
   }
+
+  const { token, user } = result.data.register;
+  await createSession(
+    { id: user.id, username: user.username, email: user.email },
+    token
+  );
 
   redirect("/");
 }
@@ -40,22 +55,28 @@ export async function login(
   _prevState: AuthState | undefined,
   formData: FormData
 ): Promise<AuthState | undefined> {
-  try {
-    const data = await publicApi<AuthResponse>("/api/login", {
-      method: "POST",
-      body: {
-        email: formData.get("email"),
-        password: formData.get("password"),
-      },
-    });
+  const client = createClient();
 
-    await createSession(data.user, data.token);
-  } catch (e) {
-    if (e instanceof ApiError) {
-      return { error: e.message };
-    }
+  const input: LoginInput = {
+    email: formData.get("email") as string,
+    password: formData.get("password") as string,
+  };
+
+  const result = await client.mutation<LoginMutation>(LoginDocument, { input });
+
+  if (result.error) {
+    return { error: result.error.message };
+  }
+
+  if (!result.data) {
     return { error: "ログインに失敗しました" };
   }
+
+  const { token, user } = result.data.login;
+  await createSession(
+    { id: user.id, username: user.username, email: user.email },
+    token
+  );
 
   redirect("/");
 }

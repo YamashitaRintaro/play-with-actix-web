@@ -1,14 +1,48 @@
 use crate::entities::{tweet, user};
 use crate::error::AppError;
+use crate::graphql::AppSchema;
 use crate::models::*;
 use crate::store::Db;
-use crate::utils::{authenticate, create_jwt, hash_password, verify_password};
+use crate::utils::{authenticate, create_jwt, hash_password, verify_jwt, verify_password};
 use actix_web::{HttpRequest, HttpResponse, web};
+use async_graphql::http::GraphiQLSource;
+use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
+
+// GraphQLハンドラー
+
+/// GraphQLエンドポイント
+pub async fn graphql_handler(
+    schema: web::Data<AppSchema>,
+    req: HttpRequest,
+    gql_req: GraphQLRequest,
+) -> GraphQLResponse {
+    let mut request = gql_req.into_inner();
+
+    // 認証トークンからユーザーIDを取得してコンテキストに追加
+    if let Some(auth_header) = req.headers().get("Authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if let Some(token) = auth_str.strip_prefix("Bearer ") {
+                if let Ok(user_id) = verify_jwt(token) {
+                    request = request.data(user_id);
+                }
+            }
+        }
+    }
+
+    schema.execute(request).await.into()
+}
+
+/// GraphQL Playgroundエンドポイント
+pub async fn graphiql_handler() -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(GraphiQLSource::build().endpoint("/graphql").finish())
+}
 
 // ビジネスロジック層
 

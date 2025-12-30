@@ -1,42 +1,57 @@
 "use client";
 
 import { logout } from "@/app/actions/auth";
-import { createTweetAction, deleteTweetAction } from "@/app/actions/tweets";
-import type { Tweet, User } from "@/lib/types";
-import { useState, useTransition } from "react";
+import {
+  useTimelineQuery,
+  useCreateTweetMutation,
+  useDeleteTweetMutation,
+  type UserType,
+} from "@/lib/graphql/generated/urql";
+import { useState, useCallback, type FormEvent } from "react";
 
 interface Props {
-  user: User;
-  initialTweets: Tweet[];
+  user: Pick<UserType, "id" | "username" | "email">;
 }
 
-export function Timeline({ user, initialTweets }: Props) {
-  const [tweets, setTweets] = useState(initialTweets);
-  const [error, setError] = useState("");
-  const [isPending, startTransition] = useTransition();
+export function Timeline({ user }: Props) {
+  const [{ data, fetching, error: queryError }, reexecuteQuery] =
+    useTimelineQuery();
+  const [{ fetching: isCreating, error: createError }, createTweet] =
+    useCreateTweetMutation();
+  const [{ fetching: isDeleting, error: deleteError }, deleteTweet] =
+    useDeleteTweetMutation();
+  const [content, setContent] = useState("");
 
-  const handleCreateTweet = async (formData: FormData) => {
-    const result = await createTweetAction(formData);
-    if (result?.error) {
-      setError(result.error);
-    } else {
-      // ページをリロードして最新のツイートを取得
-      window.location.reload();
-    }
-  };
+  const handleSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!content.trim()) return;
 
-  const handleDelete = (tweetId: string) => {
-    if (!confirm("このツイートを削除しますか？")) return;
+      const result = await createTweet({ content });
 
-    startTransition(async () => {
-      const result = await deleteTweetAction(tweetId);
-      if (result?.error) {
-        setError(result.error);
-      } else {
-        setTweets(tweets.filter((t) => t.id !== tweetId));
+      if (!result.error) {
+        setContent("");
+        reexecuteQuery({ requestPolicy: "network-only" });
       }
-    });
-  };
+    },
+    [content, createTweet, reexecuteQuery]
+  );
+
+  const handleDelete = useCallback(
+    async (tweetId: string) => {
+      if (!confirm("このツイートを削除しますか？")) return;
+
+      const result = await deleteTweet({ id: tweetId });
+
+      if (!result.error) {
+        reexecuteQuery({ requestPolicy: "network-only" });
+      }
+    },
+    [deleteTweet, reexecuteQuery]
+  );
+
+  const tweets = data?.timeline ?? [];
+  const error = queryError || createError || deleteError;
 
   return (
     <main className="min-h-screen py-8">
@@ -60,28 +75,30 @@ export function Timeline({ user, initialTweets }: Props) {
         {/* Error */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-danger">
-            {error}
+            {error.message}
           </div>
         )}
 
         {/* Tweet Form */}
         <div className="bg-card rounded-2xl shadow-sm border border-border p-6 mb-8">
           <h2 className="text-lg font-semibold mb-4">新しいツイート</h2>
-          <form action={handleCreateTweet}>
+          <form onSubmit={handleSubmit}>
             <textarea
-              name="content"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
               placeholder="今何してる？"
               maxLength={280}
               required
               className="w-full min-h-[120px] p-4 border border-border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
             />
-            <div className="flex items-center justify-end mt-4">
+            <div className="flex items-center justify-between mt-4">
+              <span className="text-sm text-muted">{content.length}/280</span>
               <button
                 type="submit"
-                disabled={isPending}
+                disabled={isCreating || !content.trim()}
                 className="px-6 py-2 bg-primary text-white rounded-full font-medium hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isPending ? "投稿中..." : "ツイート"}
+                {isCreating ? "投稿中..." : "ツイート"}
               </button>
             </div>
           </form>
@@ -92,7 +109,9 @@ export function Timeline({ user, initialTweets }: Props) {
           <h2 className="text-lg font-semibold p-6 border-b border-border">
             タイムライン
           </h2>
-          {tweets.length === 0 ? (
+          {fetching ? (
+            <p className="p-6 text-muted text-center">読み込み中...</p>
+          ) : tweets.length === 0 ? (
             <p className="p-6 text-muted text-center">
               まだツイートがありません。最初のツイートを投稿しましょう！
             </p>
@@ -107,10 +126,10 @@ export function Timeline({ user, initialTweets }: Props) {
                     <p className="flex-1 whitespace-pre-wrap break-words">
                       {tweet.content}
                     </p>
-                    {tweet.user_id === user.id && (
+                    {tweet.userId === user.id && (
                       <button
                         onClick={() => handleDelete(tweet.id)}
-                        disabled={isPending}
+                        disabled={isDeleting}
                         className="text-muted hover:text-danger transition-colors disabled:opacity-50"
                         title="削除"
                       >
@@ -119,7 +138,7 @@ export function Timeline({ user, initialTweets }: Props) {
                     )}
                   </div>
                   <time className="text-sm text-muted mt-2 block">
-                    {new Date(tweet.created_at).toLocaleString("ja-JP")}
+                    {new Date(tweet.createdAt).toLocaleString("ja-JP")}
                   </time>
                 </li>
               ))}

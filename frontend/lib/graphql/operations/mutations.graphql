@@ -1,0 +1,29 @@
+#import "./fragments.graphql"
+
+mutation Register($input: RegisterInput!) {
+  register(input: $input) {
+    token
+    user {
+      ...UserFields
+    }
+  }
+}
+
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
+    token
+    user {
+      ...UserFields
+    }
+  }
+}
+
+mutation CreateTweet($content: String!) {
+  createTweet(content: $content) {
+    ...TweetFields
+  }
+}
+
+mutation DeleteTweet($id: UUID!) {
+  deleteTweet(id: $id)
+}

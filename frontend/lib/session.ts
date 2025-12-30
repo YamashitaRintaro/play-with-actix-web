@@ -2,7 +2,7 @@ import "server-only";
 
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
-import type { User } from "./types";
+import type { SessionUser as User } from "./types";
 
 const SECRET_KEY =
   process.env.SESSION_SECRET || "your-secret-key-min-32-chars!!";

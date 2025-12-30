@@ -1,5 +1,6 @@
 mod entities;
 mod error;
+mod graphql;
 mod handlers;
 mod models;
 mod store;
@@ -7,6 +8,7 @@ mod utils;
 
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, http::header, web};
+use graphql::create_schema;
 use store::init_db;
 
 #[actix_web::main]
@@ -23,6 +25,9 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // GraphQLスキーマを作成
+    let schema = create_schema(db.clone());
+
     HttpServer::new(move || {
         // CORS設定: Next.jsフロントエンド（localhost:3000）からのアクセスを許可
         let cors = Cors::default()
@@ -35,8 +40,12 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
+            .app_data(web::Data::new(schema.clone()))
             .app_data(web::JsonConfig::default().limit(4096))
-            // APIエンドポイント（JSON）
+            // GraphQLエンドポイント
+            .route("/graphql", web::post().to(handlers::graphql_handler))
+            .route("/graphiql", web::get().to(handlers::graphiql_handler))
+            // REST APIエンドポイント（後方互換性のため残す）
             .route("/api/register", web::post().to(handlers::register))
             .route("/api/login", web::post().to(handlers::login))
             .route("/api/logout", web::post().to(handlers::logout))

@@ -1,36 +1,15 @@
-// API レスポンス型
+// GraphQL codegenで生成された型を再エクスポート
+export type {
+  UserType as User,
+  TweetType as Tweet,
+  AuthPayload,
+  LoginInput,
+  RegisterInput,
+} from "./graphql/generated/urql";
 
-export interface User {
+// セッション用のシンプルなUser型（GraphQL型から抽出）
+export interface SessionUser {
   id: string;
   username: string;
   email: string;
-}
-
-export interface Tweet {
-  id: string;
-  user_id: string;
-  content: string;
-  created_at: string;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: User;
-}
-
-// API リクエスト型
-
-export interface RegisterRequest {
-  username: string;
-  email: string;
-  password: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface CreateTweetRequest {
-  content: string;
 }

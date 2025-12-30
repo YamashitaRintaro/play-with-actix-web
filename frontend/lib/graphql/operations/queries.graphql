@@ -1,0 +1,19 @@
+#import "./fragments.graphql"
+
+query Me {
+  me {
+    ...UserFields
+  }
+}
+
+query Timeline {
+  timeline {
+    ...TweetFields
+  }
+}
+
+query Tweet($id: UUID!) {
+  tweet(id: $id) {
+    ...TweetFields
+  }
+}

@@ -26,3 +26,6 @@ validator = { version = "0.18", features = ["derive"] }
 sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "uuid"] }
 # CORS: クロスオリジンリソース共有
 actix-cors = "0.7"
+# GraphQL: async-graphqlとActix Web統合（uuid, chronoのサポートを有効化）
+async-graphql = { version = "7", features = ["uuid", "chrono"] }
+async-graphql-actix-web = "7"
