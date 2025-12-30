@@ -31,7 +31,7 @@ impl fmt::Display for AppError {
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
         let (status, message) = match self {
-            AppError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Database error"),
+            AppError::Database(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.as_str()),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.as_str()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.as_str()),

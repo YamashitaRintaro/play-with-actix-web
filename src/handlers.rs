@@ -104,17 +104,22 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
 
 /// ユーザー登録（JSON API）
 pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Result<HttpResponse> {
-    let (user_id, token) =
-        register_user(db.as_ref(), &req.username, &req.email, &req.password).await?;
+    let result = register_user(db.as_ref(), &req.username, &req.email, &req.password).await;
 
-    Ok(HttpResponse::Ok().json(AuthResponse {
-        token,
-        user: UserResponse {
-            id: user_id,
-            username: req.username.clone(),
-            email: req.email.clone(),
-        },
-    }))
+    match result {
+        Ok((user_id, token)) => Ok(HttpResponse::Ok().json(AuthResponse {
+            token,
+            user: UserResponse {
+                id: user_id,
+                username: req.username.clone(),
+                email: req.email.clone(),
+            },
+        })),
+        Err(e) => {
+            eprintln!("Register error: {}", e);
+            Err(e)
+        }
+    }
 }
 
 /// フォームからのユーザー登録

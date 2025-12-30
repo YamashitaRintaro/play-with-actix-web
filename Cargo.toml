@@ -22,10 +22,8 @@ bcrypt = "0.15"
 jsonwebtoken = "9"
 # データバリデーション: リクエストデータの検証（derive機能でValidateを使用可能）
 validator = { version = "0.18", features = ["derive"] }
-# SQLiteデータベース: 非同期SQLクエリビルダー、型安全なSQLクエリ実行（SeaORMの依存として使用）
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
-# SeaORM: 非同期ORM、sqlxを基盤とした型安全なデータベース操作
-sea-orm = { version = "0.12", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
+# SeaORM: 非同期ORM、sqlxを基盤とした型安全なデータベース操作（内部的にsqlxを使用）
+sea-orm = { version = "1.1",  features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "uuid"] }
 # Tera: ERB/Jinja2風のテンプレートエンジン
 tera = "1"
 # Actix Files: 静的ファイル配信
