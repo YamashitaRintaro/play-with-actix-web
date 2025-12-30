@@ -42,7 +42,6 @@ async fn register_user(
         email: Set(email.to_string()),
         password_hash: Set(password_hash),
         created_at: Set(created_at.to_rfc3339()),
-        ..Default::default()
     };
 
     new_user.insert(db).await?;
@@ -87,7 +86,6 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
         user_id: Set(user_id),
         content: Set(content.to_string()),
         created_at: Set(created_at.to_rfc3339()),
-        ..Default::default()
     };
 
     new_tweet.insert(db).await?;
