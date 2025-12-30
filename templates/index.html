@@ -1,0 +1,35 @@
+{% extends "base.html" %} {% block title %}Twitter Clone{% endblock %} {% block
+body_class %}index-page{% endblock %} {% block content %}
+<h1>🐦 Twitter Clone</h1>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="tweet-form">
+  <h2>新しいツイート</h2>
+  <form action="/tweets" method="POST">
+    <textarea
+      name="content"
+      placeholder="今何してる？"
+      maxlength="280"
+      required
+    ></textarea>
+    <button type="submit">ツイート</button>
+  </form>
+</div>
+
+<div class="timeline">
+  <h2>タイムライン</h2>
+  {% if tweets %} {% for tweet in tweets %}
+  <div class="tweet">
+    <div class="tweet-content">{{ tweet.content }}</div>
+    <div class="tweet-meta">
+      {{ tweet.created_at | date(format="%Y-%m-%d %H:%M") }}
+    </div>
+  </div>
+  {% endfor %} {% else %}
+  <p>まだツイートがありません。最初のツイートを投稿しましょう！</p>
+  {% endif %}
+</div>
+{% endblock %}

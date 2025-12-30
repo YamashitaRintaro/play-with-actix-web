@@ -26,3 +26,7 @@ validator = { version = "0.18", features = ["derive"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
 # SeaORM: 非同期ORM、sqlxを基盤とした型安全なデータベース操作
 sea-orm = { version = "0.12", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
+# Tera: ERB/Jinja2風のテンプレートエンジン
+tera = "1"
+# Actix Files: 静的ファイル配信
+actix-files = "0.6"

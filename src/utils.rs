@@ -52,7 +52,7 @@ pub fn create_jwt(user_id: Uuid) -> Result<String, AppError> {
 }
 
 /// JWTトークンを検証してユーザーIDを取得する
-fn verify_jwt(token: &str) -> Result<Uuid, AppError> {
+pub fn verify_jwt(token: &str) -> Result<Uuid, AppError> {
     let secret = get_jwt_secret();
 
     let token_data = decode::<Claims>(
