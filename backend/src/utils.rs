@@ -9,7 +9,7 @@ use uuid::Uuid;
 /// JWTのペイロード（クレーム）を表す構造体
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub user_id: String,
+    pub user_id: Uuid,
     pub exp: usize,
 }
 
@@ -37,7 +37,7 @@ pub fn create_jwt(user_id: Uuid) -> Result<String, AppError> {
         .timestamp() as usize;
 
     let claims = Claims {
-        user_id: user_id.to_string(),
+        user_id,
         exp: expiration,
     };
 
@@ -62,8 +62,7 @@ pub fn verify_jwt(token: &str) -> Result<Uuid, AppError> {
     )
     .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))?;
 
-    Uuid::parse_str(&token_data.claims.user_id)
-        .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))
+    Ok(token_data.claims.user_id)
 }
 
 /// AuthorizationヘッダーからBearerトークンを抽出する
