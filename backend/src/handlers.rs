@@ -98,9 +98,6 @@ pub async fn graphiql_handler() -> HttpResponse {
         .body(GraphiQLSource::build().endpoint("/graphql").finish())
 }
 
-// ビジネスロジック層
-
-/// ユーザー登録のビジネスロジック
 async fn register_user(
     db: &Db,
     username: &str,
@@ -136,7 +133,6 @@ async fn register_user(
     Ok((user_model, token))
 }
 
-/// ログインのビジネスロジック
 async fn login_user(db: &Db, email: &str, password: &str) -> Result<(user::Model, String)> {
     let user_model = user::Entity::find()
         .filter(user::Column::Email.eq(email))
@@ -155,7 +151,6 @@ async fn login_user(db: &Db, email: &str, password: &str) -> Result<(user::Model
     Ok((user_model, token))
 }
 
-/// ツイート作成のビジネスロジック
 async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<TweetResponse> {
     if content.is_empty() || content.len() > 280 {
         return Err(AppError::BadRequest(
@@ -183,9 +178,6 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
     })
 }
 
-// HTTPハンドラー層
-
-/// ユーザー登録（JSON API）
 pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Result<HttpResponse> {
     let (user_model, token) =
         register_user(db.as_ref(), &req.username, &req.email, &req.password).await?;
@@ -196,7 +188,6 @@ pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Res
     }))
 }
 
-/// ログイン（JSON API）
 pub async fn login(db: web::Data<Db>, req: web::Json<LoginRequest>) -> Result<HttpResponse> {
     let (user_model, token) = login_user(db.as_ref(), &req.email, &req.password).await?;
 
@@ -206,12 +197,10 @@ pub async fn login(db: web::Data<Db>, req: web::Json<LoginRequest>) -> Result<Ht
     }))
 }
 
-/// ログアウト（JSON API）
 pub async fn logout() -> Result<HttpResponse> {
     Ok(HttpResponse::Ok().json(serde_json::json!({ "message": "Logged out successfully" })))
 }
 
-/// ツイート投稿（JSON API）
 pub async fn create_tweet(
     req_http: HttpRequest,
     db: web::Data<Db>,
@@ -223,7 +212,6 @@ pub async fn create_tweet(
     Ok(HttpResponse::Created().json(tweet))
 }
 
-/// ツイート取得
 pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
     let tweet_model = tweet::Entity::find_by_id(*path)
         .one(db.as_ref())
@@ -233,7 +221,6 @@ pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpR
     Ok(HttpResponse::Ok().json(TweetResponse::from(tweet_model)))
 }
 
-/// ツイート削除（JSON API）
 pub async fn delete_tweet(
     req_http: HttpRequest,
     db: web::Data<Db>,
@@ -258,7 +245,6 @@ pub async fn delete_tweet(
     Ok(HttpResponse::NoContent().finish())
 }
 
-/// タイムライン取得
 pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<HttpResponse> {
     let user_id = authenticate(&req_http)?;
 

@@ -27,3 +27,11 @@ mutation CreateTweet($content: String!) {
 mutation DeleteTweet($id: UUID!) {
   deleteTweet(id: $id)
 }
+
+mutation LikeTweet($tweetId: UUID!) {
+  likeTweet(tweetId: $tweetId)
+}
+
+mutation UnlikeTweet($tweetId: UUID!) {
+  unlikeTweet(tweetId: $tweetId)
+}

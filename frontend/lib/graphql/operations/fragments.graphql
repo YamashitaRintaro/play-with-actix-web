@@ -9,4 +9,6 @@ fragment TweetFields on TweetType {
   userId
   content
   createdAt
+  likeCount
+  isLiked
 }

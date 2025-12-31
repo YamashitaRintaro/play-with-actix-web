@@ -5,6 +5,8 @@ import {
   useTimelineQuery,
   useCreateTweetMutation,
   useDeleteTweetMutation,
+  useLikeTweetMutation,
+  useUnlikeTweetMutation,
   type UserType,
 } from "@/lib/graphql/generated/urql";
 import { useState, useCallback, type FormEvent } from "react";
@@ -20,6 +22,8 @@ export function Timeline({ user }: Props) {
     useCreateTweetMutation();
   const [{ fetching: isDeleting, error: deleteError }, deleteTweet] =
     useDeleteTweetMutation();
+  const [{ fetching: isLiking }, likeTweet] = useLikeTweetMutation();
+  const [{ fetching: isUnliking }, unlikeTweet] = useUnlikeTweetMutation();
   const [content, setContent] = useState("");
 
   const handleSubmit = useCallback(
@@ -50,8 +54,22 @@ export function Timeline({ user }: Props) {
     [deleteTweet, reexecuteQuery]
   );
 
+  const handleLike = useCallback(
+    async (tweetId: string, isLiked: boolean) => {
+      const result = isLiked
+        ? await unlikeTweet({ tweetId })
+        : await likeTweet({ tweetId });
+
+      if (!result.error) {
+        reexecuteQuery({ requestPolicy: "network-only" });
+      }
+    },
+    [likeTweet, unlikeTweet, reexecuteQuery]
+  );
+
   const tweets = data?.timeline ?? [];
   const error = queryError || createError || deleteError;
+  const isLikeActionPending = isLiking || isUnliking;
 
   return (
     <main className="min-h-screen py-8">
@@ -137,9 +155,28 @@ export function Timeline({ user }: Props) {
                       </button>
                     )}
                   </div>
-                  <time className="text-sm text-muted mt-2 block">
-                    {new Date(tweet.createdAt).toLocaleString("ja-JP")}
-                  </time>
+                  <div className="flex items-center justify-between mt-3">
+                    <time className="text-sm text-muted">
+                      {new Date(tweet.createdAt).toLocaleString("ja-JP")}
+                    </time>
+                    <button
+                      onClick={() => handleLike(tweet.id, tweet.isLiked)}
+                      disabled={isLikeActionPending}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        tweet.isLiked
+                          ? "text-red-500 hover:bg-red-50"
+                          : "text-muted hover:bg-gray-100"
+                      }`}
+                      title={tweet.isLiked ? "いいねを解除" : "いいね"}
+                    >
+                      <span className="text-lg">
+                        {tweet.isLiked ? "❤️" : "🤍"}
+                      </span>
+                      <span className="text-sm font-medium">
+                        {tweet.likeCount > 0 && tweet.likeCount}
+                      </span>
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

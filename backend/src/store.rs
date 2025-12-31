@@ -57,5 +57,37 @@ pub async fn init_db() -> Result<DatabaseConnection, DbErr> {
     );
     db.execute(stmt).await?;
 
+    // いいねテーブルの作成
+    let stmt = Statement::from_sql_and_values(
+        backend,
+        r#"
+        CREATE TABLE IF NOT EXISTS likes (
+            user_id TEXT NOT NULL,
+            tweet_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, tweet_id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (tweet_id) REFERENCES tweets(id)
+        )
+        "#,
+        [],
+    );
+    db.execute(stmt).await?;
+
+    // いいねテーブルのインデックス作成
+    let stmt = Statement::from_sql_and_values(
+        backend,
+        "CREATE INDEX IF NOT EXISTS idx_likes_tweet_id ON likes(tweet_id)",
+        [],
+    );
+    db.execute(stmt).await?;
+
+    let stmt = Statement::from_sql_and_values(
+        backend,
+        "CREATE INDEX IF NOT EXISTS idx_likes_user_id ON likes(user_id)",
+        [],
+    );
+    db.execute(stmt).await?;
+
     Ok(db)
 }

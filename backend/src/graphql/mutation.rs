@@ -3,7 +3,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, Set};
 use uuid::Uuid;
 
-use crate::entities::{tweet, user};
+use crate::entities::{like, tweet, user};
 use crate::graphql::query::{TweetType, UserType};
 use crate::store::Db;
 use crate::utils::{create_jwt, hash_password, verify_password};
@@ -12,7 +12,6 @@ pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    /// ユーザー登録
     async fn register(&self, ctx: &Context<'_>, input: RegisterInput) -> Result<AuthPayload> {
         let db = ctx.data::<Db>()?;
 
@@ -50,7 +49,6 @@ impl MutationRoot {
         })
     }
 
-    /// ログイン
     async fn login(&self, ctx: &Context<'_>, input: LoginInput) -> Result<AuthPayload> {
         let db = ctx.data::<Db>()?;
 
@@ -76,7 +74,6 @@ impl MutationRoot {
         })
     }
 
-    /// ツイート作成
     async fn create_tweet(&self, ctx: &Context<'_>, content: String) -> Result<TweetType> {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
@@ -104,10 +101,11 @@ impl MutationRoot {
             user_id: *user_id,
             content,
             created_at: created_at.to_rfc3339(),
+            like_count: 0,
+            is_liked: false,
         })
     }
 
-    /// ツイート削除
     async fn delete_tweet(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
@@ -122,6 +120,54 @@ impl MutationRoot {
         }
 
         tweet_model.delete(db).await?;
+
+        Ok(true)
+    }
+
+    async fn like_tweet(&self, ctx: &Context<'_>, tweet_id: Uuid) -> Result<bool> {
+        let db = ctx.data::<Db>()?;
+        let user_id = ctx.data::<Uuid>()?;
+
+        let existing_like = like::Entity::find()
+            .filter(like::Column::TweetId.eq(tweet_id))
+            .filter(like::Column::UserId.eq(*user_id))
+            .one(db)
+            .await?;
+
+        if existing_like.is_some() {
+            return Err(async_graphql::Error::new("Already liked"));
+        }
+
+        let tweet_exists = tweet::Entity::find_by_id(tweet_id).one(db).await?.is_some();
+        if !tweet_exists {
+            return Err(async_graphql::Error::new("Tweet not found"));
+        }
+
+        // いいねを作成
+        let new_like = like::ActiveModel {
+            user_id: Set(*user_id),
+            tweet_id: Set(tweet_id),
+            created_at: Set(Utc::now().to_rfc3339()),
+        };
+
+        new_like.insert(db).await?;
+
+        Ok(true)
+    }
+
+    async fn unlike_tweet(&self, ctx: &Context<'_>, tweet_id: Uuid) -> Result<bool> {
+        let db = ctx.data::<Db>()?;
+        let user_id = ctx.data::<Uuid>()?;
+
+        // いいねを検索
+        let like_model = like::Entity::find()
+            .filter(like::Column::TweetId.eq(tweet_id))
+            .filter(like::Column::UserId.eq(*user_id))
+            .one(db)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Like not found"))?;
+
+        like_model.delete(db).await?;
 
         Ok(true)
     }

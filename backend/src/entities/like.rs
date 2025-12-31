@@ -2,12 +2,12 @@ use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "tweets")]
+#[sea_orm(table_name = "likes")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     pub user_id: Uuid,
-    pub content: String,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub tweet_id: Uuid,
     pub created_at: String,
 }
 
@@ -19,8 +19,12 @@ pub enum Relation {
         to = "super::user::Column::Id"
     )]
     User,
-    #[sea_orm(has_many = "super::like::Entity")]
-    Like,
+    #[sea_orm(
+        belongs_to = "super::tweet::Entity",
+        from = "Column::TweetId",
+        to = "super::tweet::Column::Id"
+    )]
+    Tweet,
 }
 
 impl Related<super::user::Entity> for Entity {
@@ -29,9 +33,9 @@ impl Related<super::user::Entity> for Entity {
     }
 }
 
-impl Related<super::like::Entity> for Entity {
+impl Related<super::tweet::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Like.def()
+        Relation::Tweet.def()
     }
 }
 
