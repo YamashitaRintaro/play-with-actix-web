@@ -39,18 +39,14 @@ impl MutationRoot {
             created_at: Set(created_at.to_rfc3339()),
         };
 
-        new_user.insert(db).await?;
+        let user_model = new_user.insert(db).await?;
 
         let token =
-            create_jwt(user_id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            create_jwt(user_model.id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         Ok(AuthPayload {
             token,
-            user: UserType {
-                id: user_id,
-                username: input.username,
-                email: input.email,
-            },
+            user: UserType::from(user_model),
         })
     }
 
@@ -162,4 +158,3 @@ impl AuthPayload {
         self.user.clone()
     }
 }
-

@@ -8,7 +8,9 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use async_graphql::http::GraphiQLSource;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set,
+};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -20,14 +22,23 @@ fn authenticate_request(
     req: &HttpRequest,
     mut request: async_graphql::Request,
 ) -> async_graphql::Request {
-    if let Some(user_id) = req
+    let auth_result = req
         .headers()
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
-        .and_then(|token| verify_jwt(token).ok())
-    {
-        request = request.data(user_id);
+        .map(verify_jwt);
+
+    match auth_result {
+        Some(Ok(user_id)) => {
+            request = request.data(user_id);
+        }
+        Some(Err(e)) => {
+            eprintln!("JWT verification failed: {}", e);
+        }
+        None => {
+            // Authorization ヘッダーがない場合は認証不要なリクエストとして続行
+        }
     }
     request
 }
@@ -57,7 +68,14 @@ pub async fn graphql_handler_get(
     if let Some(ref vars) = query.variables {
         match serde_json::from_str(vars) {
             Ok(variables) => request = request.variables(variables),
-            Err(e) => eprintln!("Failed to parse GraphQL variables: {}", e),
+            Err(e) => {
+                let error_response =
+                    async_graphql::Response::from_errors(vec![async_graphql::ServerError::new(
+                        format!("Failed to parse GraphQL variables: {}", e),
+                        None,
+                    )]);
+                return error_response.into();
+            }
         }
     }
 
@@ -88,7 +106,7 @@ async fn register_user(
     username: &str,
     email: &str,
     password: &str,
-) -> Result<(Uuid, String)> {
+) -> Result<(user::Model, String)> {
     // メールアドレスの重複チェック
     let existing = user::Entity::find()
         .filter(user::Column::Email.eq(email))
@@ -111,11 +129,11 @@ async fn register_user(
         created_at: Set(created_at.to_rfc3339()),
     };
 
-    new_user.insert(db).await?;
+    let user_model = new_user.insert(db).await?;
 
     let token = create_jwt(user_id)?;
 
-    Ok((user_id, token))
+    Ok((user_model, token))
 }
 
 /// ログインのビジネスロジック
@@ -169,22 +187,13 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
 
 /// ユーザー登録（JSON API）
 pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Result<HttpResponse> {
-    let result = register_user(db.as_ref(), &req.username, &req.email, &req.password).await;
+    let (user_model, token) =
+        register_user(db.as_ref(), &req.username, &req.email, &req.password).await?;
 
-    match result {
-        Ok((user_id, token)) => Ok(HttpResponse::Ok().json(AuthResponse {
-            token,
-            user: UserResponse {
-                id: user_id,
-                username: req.username.clone(),
-                email: req.email.clone(),
-            },
-        })),
-        Err(e) => {
-            eprintln!("Register error: {}", e);
-            Err(e)
-        }
-    }
+    Ok(HttpResponse::Ok().json(AuthResponse {
+        token,
+        user: UserResponse::from(user_model),
+    }))
 }
 
 /// ログイン（JSON API）
@@ -239,7 +248,9 @@ pub async fn delete_tweet(
 
     // 所有者のみ削除可能
     if tweet_model.user_id != user_id {
-        return Err(AppError::Unauthorized("Not authorized to delete this tweet".to_string()));
+        return Err(AppError::Unauthorized(
+            "Not authorized to delete this tweet".to_string(),
+        ));
     }
 
     tweet_model.delete(db.as_ref()).await?;

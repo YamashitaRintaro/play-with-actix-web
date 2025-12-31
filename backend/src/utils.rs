@@ -33,7 +33,7 @@ fn get_jwt_secret() -> String {
 pub fn create_jwt(user_id: Uuid) -> Result<String, AppError> {
     let expiration = Utc::now()
         .checked_add_signed(Duration::hours(24))
-        .expect("valid timestamp")
+        .ok_or_else(|| AppError::Internal("Failed to calculate token expiration".to_string()))?
         .timestamp() as usize;
 
     let claims = Claims {
