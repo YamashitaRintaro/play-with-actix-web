@@ -22,14 +22,13 @@ fn authenticate_request(
     req: &HttpRequest,
     mut request: async_graphql::Request,
 ) -> async_graphql::Request {
-    let auth_result = req
+    match req
         .headers()
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
-        .map(verify_jwt);
-
-    match auth_result {
+        .map(verify_jwt)
+    {
         Some(Ok(user_id)) => {
             request = request.data(user_id);
         }
@@ -69,12 +68,13 @@ pub async fn graphql_handler_get(
         match serde_json::from_str(vars) {
             Ok(variables) => request = request.variables(variables),
             Err(e) => {
-                let error_response =
-                    async_graphql::Response::from_errors(vec![async_graphql::ServerError::new(
+                return async_graphql::Response::from_errors(vec![
+                    async_graphql::ServerError::new(
                         format!("Failed to parse GraphQL variables: {}", e),
                         None,
-                    )]);
-                return error_response.into();
+                    ),
+                ])
+                .into();
             }
         }
     }
@@ -105,12 +105,12 @@ async fn register_user(
     password: &str,
 ) -> Result<(user::Model, String)> {
     // メールアドレスの重複チェック
-    let existing = user::Entity::find()
+    if user::Entity::find()
         .filter(user::Column::Email.eq(email))
         .one(db)
-        .await?;
-
-    if existing.is_some() {
+        .await?
+        .is_some()
+    {
         return Err(AppError::BadRequest("Email already exists".to_string()));
     }
 
@@ -118,15 +118,15 @@ async fn register_user(
     let user_id = Uuid::new_v4();
     let created_at = Utc::now();
 
-    let new_user = user::ActiveModel {
+    let user_model = user::ActiveModel {
         id: Set(user_id),
         username: Set(username.to_string()),
         email: Set(email.to_string()),
         password_hash: Set(password_hash),
         created_at: Set(created_at.to_rfc3339()),
-    };
-
-    let user_model = new_user.insert(db).await?;
+    }
+    .insert(db)
+    .await?;
 
     let token = create_jwt(user_id)?;
 
