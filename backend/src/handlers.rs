@@ -100,13 +100,13 @@ async fn register_user(
     email: &str,
     password: &str,
 ) -> Result<(User, String)> {
-    // メールアドレスの重複チェック
-    let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+    // メールアドレスの重複チェック（SELECT 1 で軽量に）
+    let exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE email = ?")
         .bind(email)
         .fetch_optional(db)
         .await?;
 
-    if existing.is_some() {
+    if exists.is_some() {
         return Err(AppError::BadRequest("Email already exists".to_string()));
     }
 
@@ -235,23 +235,17 @@ pub async fn delete_tweet(
 ) -> Result<HttpResponse> {
     let user_id = authenticate(&req_http)?;
 
-    let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
+    let result = sqlx::query("DELETE FROM tweets WHERE id = ? AND user_id = ?")
         .bind(*path)
-        .fetch_optional(db.as_ref())
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
-
-    // 所有者のみ削除可能（tweet.user_id は既に Uuid 型）
-    if tweet.user_id != user_id {
-        return Err(AppError::Unauthorized(
-            "Not authorized to delete this tweet".to_string(),
-        ));
-    }
-
-    sqlx::query("DELETE FROM tweets WHERE id = ?")
-        .bind(*path)
+        .bind(user_id)
         .execute(db.as_ref())
         .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound(
+            "Tweet not found or not authorized".to_string(),
+        ));
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }
