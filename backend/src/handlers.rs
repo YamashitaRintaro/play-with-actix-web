@@ -1,4 +1,3 @@
-use crate::entities::{tweet, user};
 use crate::error::AppError;
 use crate::graphql::AppSchema;
 use crate::models::*;
@@ -8,9 +7,6 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use async_graphql::http::GraphiQLSource;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set,
-};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -103,52 +99,63 @@ async fn register_user(
     username: &str,
     email: &str,
     password: &str,
-) -> Result<(user::Model, String)> {
+) -> Result<(User, String)> {
     // メールアドレスの重複チェック
-    if user::Entity::find()
-        .filter(user::Column::Email.eq(email))
-        .one(db)
-        .await?
-        .is_some()
-    {
+    let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+        .bind(email)
+        .fetch_optional(db)
+        .await?;
+
+    if existing.is_some() {
         return Err(AppError::BadRequest("Email already exists".to_string()));
     }
 
     let password_hash = hash_password(password)?;
     let user_id = Uuid::new_v4();
-    let created_at = Utc::now();
+    let created_at = Utc::now().to_rfc3339();
 
-    let user_model = user::ActiveModel {
-        id: Set(user_id),
-        username: Set(username.to_string()),
-        email: Set(email.to_string()),
-        password_hash: Set(password_hash),
-        created_at: Set(created_at.to_rfc3339()),
-    }
-    .insert(db)
+    // ユーザーを挿入（Uuidは自動でTEXTに変換される）
+    sqlx::query(
+        "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(username)
+    .bind(email)
+    .bind(&password_hash)
+    .bind(&created_at)
+    .execute(db)
     .await?;
+
+    let user = User {
+        id: user_id,
+        username: username.to_string(),
+        email: email.to_string(),
+        password_hash,
+        created_at,
+    };
 
     let token = create_jwt(user_id)?;
 
-    Ok((user_model, token))
+    Ok((user, token))
 }
 
-async fn login_user(db: &Db, email: &str, password: &str) -> Result<(user::Model, String)> {
-    let user_model = user::Entity::find()
-        .filter(user::Column::Email.eq(email))
-        .one(db)
+async fn login_user(db: &Db, email: &str, password: &str) -> Result<(User, String)> {
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+        .bind(email)
+        .fetch_optional(db)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid email or password".to_string()))?;
 
-    if !verify_password(password, &user_model.password_hash)? {
+    if !verify_password(password, &user.password_hash)? {
         return Err(AppError::Unauthorized(
             "Invalid email or password".to_string(),
         ));
     }
 
-    let token = create_jwt(user_model.id)?;
+    // user.id は既に Uuid 型なので parse 不要
+    let token = create_jwt(user.id)?;
 
-    Ok((user_model, token))
+    Ok((user, token))
 }
 
 async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<TweetResponse> {
@@ -161,14 +168,13 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
     let tweet_id = Uuid::new_v4();
     let created_at = Utc::now();
 
-    let new_tweet = tweet::ActiveModel {
-        id: Set(tweet_id),
-        user_id: Set(user_id),
-        content: Set(content.to_string()),
-        created_at: Set(created_at.to_rfc3339()),
-    };
-
-    new_tweet.insert(db).await?;
+    sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
+        .bind(tweet_id)
+        .bind(user_id)
+        .bind(content)
+        .bind(created_at.to_rfc3339())
+        .execute(db)
+        .await?;
 
     Ok(TweetResponse {
         id: tweet_id,
@@ -179,21 +185,21 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
 }
 
 pub async fn register(db: web::Data<Db>, req: web::Json<RegisterRequest>) -> Result<HttpResponse> {
-    let (user_model, token) =
+    let (user, token) =
         register_user(db.as_ref(), &req.username, &req.email, &req.password).await?;
 
     Ok(HttpResponse::Ok().json(AuthResponse {
         token,
-        user: UserResponse::from(user_model),
+        user: UserResponse::from(user),
     }))
 }
 
 pub async fn login(db: web::Data<Db>, req: web::Json<LoginRequest>) -> Result<HttpResponse> {
-    let (user_model, token) = login_user(db.as_ref(), &req.email, &req.password).await?;
+    let (user, token) = login_user(db.as_ref(), &req.email, &req.password).await?;
 
     Ok(HttpResponse::Ok().json(AuthResponse {
         token,
-        user: UserResponse::from(user_model),
+        user: UserResponse::from(user),
     }))
 }
 
@@ -213,12 +219,13 @@ pub async fn create_tweet(
 }
 
 pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
-    let tweet_model = tweet::Entity::find_by_id(*path)
-        .one(db.as_ref())
+    let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
+        .bind(*path)
+        .fetch_optional(db.as_ref())
         .await?
         .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
 
-    Ok(HttpResponse::Ok().json(TweetResponse::from(tweet_model)))
+    Ok(HttpResponse::Ok().json(TweetResponse::from(tweet)))
 }
 
 pub async fn delete_tweet(
@@ -228,19 +235,23 @@ pub async fn delete_tweet(
 ) -> Result<HttpResponse> {
     let user_id = authenticate(&req_http)?;
 
-    let tweet_model = tweet::Entity::find_by_id(*path)
-        .one(db.as_ref())
+    let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
+        .bind(*path)
+        .fetch_optional(db.as_ref())
         .await?
         .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
 
-    // 所有者のみ削除可能
-    if tweet_model.user_id != user_id {
+    // 所有者のみ削除可能（tweet.user_id は既に Uuid 型）
+    if tweet.user_id != user_id {
         return Err(AppError::Unauthorized(
             "Not authorized to delete this tweet".to_string(),
         ));
     }
 
-    tweet_model.delete(db.as_ref()).await?;
+    sqlx::query("DELETE FROM tweets WHERE id = ?")
+        .bind(*path)
+        .execute(db.as_ref())
+        .await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -248,16 +259,11 @@ pub async fn delete_tweet(
 pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<HttpResponse> {
     let user_id = authenticate(&req_http)?;
 
-    let user = user::Entity::find_by_id(user_id)
-        .one(db.as_ref())
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-
-    let tweets = user
-        .find_related(tweet::Entity)
-        .order_by_desc(tweet::Column::CreatedAt)
-        .all(db.as_ref())
-        .await?;
+    let tweets: Vec<Tweet> =
+        sqlx::query_as("SELECT * FROM tweets WHERE user_id = ? ORDER BY created_at DESC")
+            .bind(user_id)
+            .fetch_all(db.as_ref())
+            .await?;
 
     let timeline: Vec<TweetResponse> = tweets.into_iter().map(TweetResponse::from).collect();
 

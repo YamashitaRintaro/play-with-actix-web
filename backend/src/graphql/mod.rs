@@ -1,10 +1,9 @@
 mod mutation;
-mod query;
+pub mod query;
 
 use async_graphql::{EmptySubscription, Schema};
-
-pub use mutation::MutationRoot;
-pub use query::QueryRoot;
+use mutation::MutationRoot;
+use query::QueryRoot;
 
 use crate::store::Db;
 

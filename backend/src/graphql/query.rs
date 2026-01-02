@@ -1,9 +1,8 @@
 use async_graphql::{Context, Object, Result};
-use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::entities::{like, tweet, user};
+use crate::models::{LikeTweetId, Tweet, User};
 use crate::store::Db;
 
 pub struct QueryRoot;
@@ -15,85 +14,89 @@ impl QueryRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        let user = user::Entity::find_by_id(*user_id)
-            .one(db)
-            .await?
-            .ok_or_else(|| async_graphql::Error::new("User not found"))?;
+        // ユーザーのツイートを取得
+        let tweets: Vec<Tweet> =
+            sqlx::query_as("SELECT * FROM tweets WHERE user_id = ? ORDER BY created_at DESC")
+                .bind(user_id)
+                .fetch_all(db)
+                .await?;
 
-        let tweets_with_likes = user
-            .find_related(tweet::Entity)
-            .order_by_desc(tweet::Column::CreatedAt)
-            .find_with_related(like::Entity)
-            .all(db)
-            .await?;
-
-        if tweets_with_likes.is_empty() {
+        if tweets.is_empty() {
             return Ok(Vec::new());
         }
 
-        // ツイートIDを収集
-        let tweet_ids: Vec<Uuid> = tweets_with_likes
-            .iter()
-            .map(|(tweet, _)| tweet.id)
-            .collect();
+        let tweet_ids: Vec<Uuid> = tweets.iter().map(|t| t.id).collect();
 
-        // いいね数を集計
-        let mut like_counts: HashMap<Uuid, i64> = HashMap::new();
-        for (tweet, likes) in &tweets_with_likes {
-            like_counts.insert(tweet.id, likes.len() as i64);
+        // SQLiteでIN句を使うため、プレースホルダを動的に生成
+        let placeholders = tweet_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let like_count_query = format!(
+            "SELECT tweet_id, COUNT(*) as count FROM likes WHERE tweet_id IN ({}) GROUP BY tweet_id",
+            placeholders
+        );
+
+        let mut query = sqlx::query_as::<_, (Uuid, i64)>(&like_count_query);
+        for id in &tweet_ids {
+            query = query.bind(id);
         }
+        let like_counts: Vec<(Uuid, i64)> = query.fetch_all(db).await?;
+        let like_count_map: std::collections::HashMap<Uuid, i64> =
+            like_counts.into_iter().collect();
 
         // 現在のユーザーがいいねしたツイートを取得
-        let user_likes = like::Entity::find()
-            .filter(like::Column::TweetId.is_in(tweet_ids))
-            .filter(like::Column::UserId.eq(*user_id))
-            .all(db)
-            .await?;
+        let user_likes_query = format!(
+            "SELECT tweet_id FROM likes WHERE tweet_id IN ({}) AND user_id = ?",
+            placeholders
+        );
+        let mut query = sqlx::query_as::<_, LikeTweetId>(&user_likes_query);
+        for id in &tweet_ids {
+            query = query.bind(id);
+        }
+        query = query.bind(user_id);
+        let user_likes: Vec<LikeTweetId> = query.fetch_all(db).await?;
+        let liked_tweet_ids: HashSet<Uuid> = user_likes.into_iter().map(|l| l.tweet_id).collect();
 
-        let liked_tweet_ids: HashSet<Uuid> = user_likes.iter().map(|l| l.tweet_id).collect();
-
-        let result: Vec<TweetType> = tweets_with_likes
+        let result: Vec<TweetType> = tweets
             .into_iter()
-            .map(|(tweet, _)| TweetType {
-                id: tweet.id,
-                user_id: tweet.user_id,
-                content: tweet.content,
-                created_at: tweet.created_at,
-                like_count: *like_counts.get(&tweet.id).unwrap_or(&0),
-                is_liked: liked_tweet_ids.contains(&tweet.id),
+            .map(|tweet| {
+                let like_count = *like_count_map.get(&tweet.id).unwrap_or(&0);
+                let is_liked = liked_tweet_ids.contains(&tweet.id);
+                TweetType::from_tweet(tweet, like_count, is_liked)
             })
             .collect();
 
         Ok(result)
     }
 
-    /// 特定のツイートを取得
     async fn tweet(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<TweetType>> {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>().ok();
 
-        let tweet_with_likes = tweet::Entity::find_by_id(id)
-            .find_with_related(like::Entity)
-            .all(db)
+        let tweet: Option<Tweet> = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db)
             .await?;
 
-        if let Some((tweet_model, likes)) = tweet_with_likes.first() {
-            let like_count = likes.len() as i64;
+        if let Some(tweet) = tweet {
+            // いいね数を取得
+            let (like_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM likes WHERE tweet_id = ?")
+                    .bind(tweet.id)
+                    .fetch_one(db)
+                    .await?;
 
             let is_liked = if let Some(uid) = user_id {
-                likes.iter().any(|l| l.user_id == *uid)
+                let exists: Option<(i32,)> =
+                    sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
+                        .bind(tweet.id)
+                        .bind(uid)
+                        .fetch_optional(db)
+                        .await?;
+                exists.is_some()
             } else {
                 false
             };
 
-            Ok(Some(TweetType {
-                id: tweet_model.id,
-                user_id: tweet_model.user_id,
-                content: tweet_model.content.clone(),
-                created_at: tweet_model.created_at.clone(),
-                like_count,
-                is_liked,
-            }))
+            Ok(Some(TweetType::from_tweet(tweet, like_count, is_liked)))
         } else {
             Ok(None)
         }
@@ -105,7 +108,10 @@ impl QueryRoot {
         let user_id = ctx.data::<Uuid>().ok();
 
         if let Some(id) = user_id {
-            let user = user::Entity::find_by_id(*id).one(db).await?;
+            let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+                .bind(id)
+                .fetch_optional(db)
+                .await?;
             Ok(user.map(UserType::from))
         } else {
             Ok(None)
@@ -136,12 +142,13 @@ impl UserType {
     }
 }
 
-impl From<user::Model> for UserType {
-    fn from(model: user::Model) -> Self {
+// UserからUserTypeへの変換（Uuid::parse_str不要）
+impl From<User> for UserType {
+    fn from(user: User) -> Self {
         Self {
-            id: model.id,
-            username: model.username,
-            email: model.email,
+            id: user.id,
+            username: user.username,
+            email: user.email,
         }
     }
 }
@@ -184,15 +191,22 @@ impl TweetType {
     }
 }
 
-impl From<tweet::Model> for TweetType {
-    fn from(model: tweet::Model) -> Self {
+impl TweetType {
+    // TweetからTweetTypeへの変換（Uuid::parse_str不要）
+    pub fn from_tweet(tweet: Tweet, like_count: i64, is_liked: bool) -> Self {
         Self {
-            id: model.id,
-            user_id: model.user_id,
-            content: model.content,
-            created_at: model.created_at,
-            like_count: 0,
-            is_liked: false,
+            id: tweet.id,
+            user_id: tweet.user_id,
+            content: tweet.content,
+            created_at: tweet.created_at,
+            like_count,
+            is_liked,
         }
+    }
+}
+
+impl From<Tweet> for TweetType {
+    fn from(tweet: Tweet) -> Self {
+        Self::from_tweet(tweet, 0, false)
     }
 }
