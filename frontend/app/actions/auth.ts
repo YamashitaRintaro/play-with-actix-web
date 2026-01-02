@@ -9,14 +9,13 @@ import {
   type RegisterMutation,
   type RegisterMutationVariables,
 } from "@/lib/graphql/generated/graphql";
-import { createSession, deleteSession } from "@/lib/session";
+import { createSession, deleteSession, verifySession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
 export interface AuthState {
   error?: string;
 }
 
-// 型定義
 interface RegisterInput {
   username: string;
   email: string;
@@ -28,7 +27,6 @@ interface LoginInput {
   password: string;
 }
 
-// 内部関数（型付き引数、テスト可能）
 async function registerUser(
   input: RegisterInput
 ): Promise<AuthState | undefined> {
@@ -81,7 +79,6 @@ async function loginUser(input: LoginInput): Promise<AuthState | undefined> {
   return undefined;
 }
 
-/** ユーザー登録 */
 export async function register(
   _prevState: AuthState | undefined,
   formData: FormData
@@ -103,7 +100,6 @@ export async function register(
   redirect("/");
 }
 
-/** ログイン */
 export async function login(
   _prevState: AuthState | undefined,
   formData: FormData
@@ -124,8 +120,12 @@ export async function login(
   redirect("/");
 }
 
-/** ログアウト */
 export async function logout() {
-  await deleteSession();
+  const session = await verifySession();
+
+  if (session) {
+    await deleteSession();
+  }
+
   redirect("/login");
 }
