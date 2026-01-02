@@ -3,7 +3,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::graphql::query::{TweetType, UserType};
-use crate::models::{Tweet, User};
+use crate::models::User;
 use crate::store::Db;
 use crate::utils::{create_jwt, hash_password, verify_password};
 
@@ -14,13 +14,12 @@ impl MutationRoot {
     async fn register(&self, ctx: &Context<'_>, input: RegisterInput) -> Result<AuthPayload> {
         let db = ctx.data::<Db>()?;
 
-        // メールアドレスの重複チェック
-        let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+        let exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE email = ?")
             .bind(&input.email)
             .fetch_optional(db)
             .await?;
 
-        if existing.is_some() {
+        if exists.is_some() {
             return Err(async_graphql::Error::new("Email already exists"));
         }
 
@@ -115,20 +114,17 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
+        let result = sqlx::query("DELETE FROM tweets WHERE id = ? AND user_id = ?")
             .bind(id)
-            .fetch_optional(db)
-            .await?
-            .ok_or_else(|| async_graphql::Error::new("Tweet not found"))?;
-
-        if tweet.user_id != *user_id {
-            return Err(async_graphql::Error::new("Not authorized"));
-        }
-
-        sqlx::query("DELETE FROM tweets WHERE id = ?")
-            .bind(id)
+            .bind(user_id)
             .execute(db)
             .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(async_graphql::Error::new(
+                "Tweet not found or not authorized",
+            ));
+        }
 
         Ok(true)
     }
@@ -175,23 +171,15 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // いいねが存在するかチェック
-        let like_exists: Option<(i32,)> =
-            sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
-                .bind(tweet_id)
-                .bind(user_id)
-                .fetch_optional(db)
-                .await?;
-
-        if like_exists.is_none() {
-            return Err(async_graphql::Error::new("Like not found"));
-        }
-
-        sqlx::query("DELETE FROM likes WHERE tweet_id = ? AND user_id = ?")
+        let result = sqlx::query("DELETE FROM likes WHERE tweet_id = ? AND user_id = ?")
             .bind(tweet_id)
             .bind(user_id)
             .execute(db)
             .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(async_graphql::Error::new("Like not found"));
+        }
 
         Ok(true)
     }
