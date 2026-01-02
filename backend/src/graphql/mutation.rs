@@ -1,10 +1,9 @@
 use async_graphql::{Context, InputObject, Object, Result};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, Set};
 use uuid::Uuid;
 
-use crate::entities::{like, tweet, user};
 use crate::graphql::query::{TweetType, UserType};
+use crate::models::{Tweet, User};
 use crate::store::Db;
 use crate::utils::{create_jwt, hash_password, verify_password};
 
@@ -16,9 +15,9 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
 
         // メールアドレスの重複チェック
-        let existing = user::Entity::find()
-            .filter(user::Column::Email.eq(&input.email))
-            .one(db)
+        let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+            .bind(&input.email)
+            .fetch_optional(db)
             .await?;
 
         if existing.is_some() {
@@ -28,49 +27,58 @@ impl MutationRoot {
         let password_hash =
             hash_password(&input.password).map_err(|e| async_graphql::Error::new(e.to_string()))?;
         let user_id = Uuid::new_v4();
-        let created_at = Utc::now();
+        let created_at = Utc::now().to_rfc3339();
 
-        let new_user = user::ActiveModel {
-            id: Set(user_id),
-            username: Set(input.username.clone()),
-            email: Set(input.email.clone()),
-            password_hash: Set(password_hash),
-            created_at: Set(created_at.to_rfc3339()),
+        sqlx::query(
+            "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(user_id.to_string())
+        .bind(&input.username)
+        .bind(&input.email)
+        .bind(&password_hash)
+        .bind(&created_at)
+        .execute(db)
+        .await?;
+
+        let user = User {
+            id: user_id.to_string(),
+            username: input.username.clone(),
+            email: input.email.clone(),
+            password_hash,
+            created_at,
         };
 
-        let user_model = new_user.insert(db).await?;
-
-        let token =
-            create_jwt(user_model.id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let token = create_jwt(user_id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         Ok(AuthPayload {
             token,
-            user: UserType::from(user_model),
+            user: UserType::from(user),
         })
     }
 
     async fn login(&self, ctx: &Context<'_>, input: LoginInput) -> Result<AuthPayload> {
         let db = ctx.data::<Db>()?;
 
-        let user_model = user::Entity::find()
-            .filter(user::Column::Email.eq(&input.email))
-            .one(db)
+        let user: User = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+            .bind(&input.email)
+            .fetch_optional(db)
             .await?
             .ok_or_else(|| async_graphql::Error::new("Invalid email or password"))?;
 
-        let valid = verify_password(&input.password, &user_model.password_hash)
+        let valid = verify_password(&input.password, &user.password_hash)
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         if !valid {
             return Err(async_graphql::Error::new("Invalid email or password"));
         }
 
-        let token =
-            create_jwt(user_model.id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let user_id =
+            Uuid::parse_str(&user.id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let token = create_jwt(user_id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         Ok(AuthPayload {
             token,
-            user: UserType::from(user_model),
+            user: UserType::from(user),
         })
     }
 
@@ -85,22 +93,21 @@ impl MutationRoot {
         }
 
         let tweet_id = Uuid::new_v4();
-        let created_at = Utc::now();
+        let created_at = Utc::now().to_rfc3339();
 
-        let new_tweet = tweet::ActiveModel {
-            id: Set(tweet_id),
-            user_id: Set(*user_id),
-            content: Set(content.clone()),
-            created_at: Set(created_at.to_rfc3339()),
-        };
-
-        new_tweet.insert(db).await?;
+        sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
+            .bind(tweet_id.to_string())
+            .bind(user_id.to_string())
+            .bind(&content)
+            .bind(&created_at)
+            .execute(db)
+            .await?;
 
         Ok(TweetType {
             id: tweet_id,
             user_id: *user_id,
             content,
-            created_at: created_at.to_rfc3339(),
+            created_at,
             like_count: 0,
             is_liked: false,
         })
@@ -110,16 +117,22 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        let tweet_model = tweet::Entity::find_by_id(id)
-            .one(db)
+        let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_optional(db)
             .await?
             .ok_or_else(|| async_graphql::Error::new("Tweet not found"))?;
 
-        if tweet_model.user_id != *user_id {
+        let tweet_user_id = Uuid::parse_str(&tweet.user_id)
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        if tweet_user_id != *user_id {
             return Err(async_graphql::Error::new("Not authorized"));
         }
 
-        tweet_model.delete(db).await?;
+        sqlx::query("DELETE FROM tweets WHERE id = ?")
+            .bind(id.to_string())
+            .execute(db)
+            .await?;
 
         Ok(true)
     }
@@ -128,29 +141,36 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        let existing_like = like::Entity::find()
-            .filter(like::Column::TweetId.eq(tweet_id))
-            .filter(like::Column::UserId.eq(*user_id))
-            .one(db)
-            .await?;
+        // 既にいいね済みかチェック（存在確認のみなので1を選択）
+        let already_liked: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
+                .bind(tweet_id.to_string())
+                .bind(user_id.to_string())
+                .fetch_optional(db)
+                .await?;
 
-        if existing_like.is_some() {
+        if already_liked.is_some() {
             return Err(async_graphql::Error::new("Already liked"));
         }
 
-        let tweet_exists = tweet::Entity::find_by_id(tweet_id).one(db).await?.is_some();
-        if !tweet_exists {
+        // ツイートが存在するか確認（存在確認のみなので1を選択）
+        let tweet_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM tweets WHERE id = ?")
+            .bind(tweet_id.to_string())
+            .fetch_optional(db)
+            .await?;
+
+        if tweet_exists.is_none() {
             return Err(async_graphql::Error::new("Tweet not found"));
         }
 
         // いいねを作成
-        let new_like = like::ActiveModel {
-            user_id: Set(*user_id),
-            tweet_id: Set(tweet_id),
-            created_at: Set(Utc::now().to_rfc3339()),
-        };
-
-        new_like.insert(db).await?;
+        let created_at = Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO likes (user_id, tweet_id, created_at) VALUES (?, ?, ?)")
+            .bind(user_id.to_string())
+            .bind(tweet_id.to_string())
+            .bind(&created_at)
+            .execute(db)
+            .await?;
 
         Ok(true)
     }
@@ -159,15 +179,23 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // いいねを検索
-        let like_model = like::Entity::find()
-            .filter(like::Column::TweetId.eq(tweet_id))
-            .filter(like::Column::UserId.eq(*user_id))
-            .one(db)
-            .await?
-            .ok_or_else(|| async_graphql::Error::new("Like not found"))?;
+        // いいねが存在するかチェック（存在確認のみなので1を選択）
+        let like_exists: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
+                .bind(tweet_id.to_string())
+                .bind(user_id.to_string())
+                .fetch_optional(db)
+                .await?;
 
-        like_model.delete(db).await?;
+        if like_exists.is_none() {
+            return Err(async_graphql::Error::new("Like not found"));
+        }
+
+        sqlx::query("DELETE FROM likes WHERE tweet_id = ? AND user_id = ?")
+            .bind(tweet_id.to_string())
+            .bind(user_id.to_string())
+            .execute(db)
+            .await?;
 
         Ok(true)
     }

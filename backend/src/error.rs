@@ -54,9 +54,9 @@ impl ResponseError for AppError {
     }
 }
 
-// sea_orm::DbErr から AppError への変換
-impl From<sea_orm::DbErr> for AppError {
-    fn from(err: sea_orm::DbErr) -> Self {
+// sqlx::Error から AppError への変換
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
         AppError::Database(err.to_string())
     }
 }

@@ -1,4 +1,3 @@
-mod entities;
 mod error;
 mod graphql;
 mod handlers;
