@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { getApiToken, getCurrentUser } from "@/lib/session";
 import { GraphQLProvider } from "@/lib/graphql/provider";
-import { Timeline } from "./_components/Timeline";
 
-export default async function HomePage() {
+export default async function PrivateLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const user = await getCurrentUser();
   const token = await getApiToken();
 
@@ -11,9 +14,6 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  return (
-    <GraphQLProvider token={token}>
-      <Timeline user={user} />
-    </GraphQLProvider>
-  );
+  return <GraphQLProvider token={token}>{children}</GraphQLProvider>;
 }
+
