@@ -100,7 +100,6 @@ async fn register_user(
     email: &str,
     password: &str,
 ) -> Result<(User, String)> {
-    // メールアドレスの重複チェック（SELECT 1 で軽量に）
     let exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE email = ?")
         .bind(email)
         .fetch_optional(db)
@@ -114,7 +113,6 @@ async fn register_user(
     let user_id = Uuid::new_v4();
     let created_at = Utc::now().to_rfc3339();
 
-    // ユーザーを挿入（Uuidは自動でTEXTに変換される）
     sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
     )
