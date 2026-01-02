@@ -25,10 +25,8 @@ impl QueryRoot {
             return Ok(Vec::new());
         }
 
-        // ツイートIDを収集
         let tweet_ids: Vec<String> = tweets.iter().map(|t| t.id.clone()).collect();
 
-        // いいね数を取得（ツイートごとにカウント）
         // SQLiteでIN句を使うため、プレースホルダを動的に生成
         let placeholders = tweet_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let like_count_query = format!(
@@ -44,7 +42,7 @@ impl QueryRoot {
         let like_count_map: std::collections::HashMap<String, i64> =
             like_counts.into_iter().collect();
 
-        // 現在のユーザーがいいねしたツイートを取得（tweet_idのみ選択）
+        // 現在のユーザーがいいねしたツイートを取得
         let user_likes_query = format!(
             "SELECT tweet_id FROM likes WHERE tweet_id IN ({}) AND user_id = ?",
             placeholders
@@ -69,7 +67,6 @@ impl QueryRoot {
         Ok(result)
     }
 
-    /// 特定のツイートを取得
     async fn tweet(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<TweetType>> {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>().ok();
@@ -87,7 +84,6 @@ impl QueryRoot {
                     .fetch_one(db)
                     .await?;
 
-            // 現在のユーザーがいいね済みかチェック（存在確認のみなので1を選択）
             let is_liked = if let Some(uid) = user_id {
                 let exists: Option<(i32,)> =
                     sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
