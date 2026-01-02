@@ -17,7 +17,7 @@ impl QueryRoot {
         // ユーザーのツイートを取得
         let tweets: Vec<Tweet> =
             sqlx::query_as("SELECT * FROM tweets WHERE user_id = ? ORDER BY created_at DESC")
-                .bind(user_id.to_string())
+                .bind(user_id)
                 .fetch_all(db)
                 .await?;
 
@@ -25,7 +25,7 @@ impl QueryRoot {
             return Ok(Vec::new());
         }
 
-        let tweet_ids: Vec<String> = tweets.iter().map(|t| t.id.clone()).collect();
+        let tweet_ids: Vec<Uuid> = tweets.iter().map(|t| t.id).collect();
 
         // SQLiteでIN句を使うため、プレースホルダを動的に生成
         let placeholders = tweet_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
@@ -34,12 +34,12 @@ impl QueryRoot {
             placeholders
         );
 
-        let mut query = sqlx::query_as::<_, (String, i64)>(&like_count_query);
+        let mut query = sqlx::query_as::<_, (Uuid, i64)>(&like_count_query);
         for id in &tweet_ids {
             query = query.bind(id);
         }
-        let like_counts: Vec<(String, i64)> = query.fetch_all(db).await?;
-        let like_count_map: std::collections::HashMap<String, i64> =
+        let like_counts: Vec<(Uuid, i64)> = query.fetch_all(db).await?;
+        let like_count_map: std::collections::HashMap<Uuid, i64> =
             like_counts.into_iter().collect();
 
         // 現在のユーザーがいいねしたツイートを取得
@@ -51,9 +51,9 @@ impl QueryRoot {
         for id in &tweet_ids {
             query = query.bind(id);
         }
-        query = query.bind(user_id.to_string());
+        query = query.bind(user_id);
         let user_likes: Vec<LikeTweetId> = query.fetch_all(db).await?;
-        let liked_tweet_ids: HashSet<String> = user_likes.into_iter().map(|l| l.tweet_id).collect();
+        let liked_tweet_ids: HashSet<Uuid> = user_likes.into_iter().map(|l| l.tweet_id).collect();
 
         let result: Vec<TweetType> = tweets
             .into_iter()
@@ -72,7 +72,7 @@ impl QueryRoot {
         let user_id = ctx.data::<Uuid>().ok();
 
         let tweet: Option<Tweet> = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(db)
             .await?;
 
@@ -80,15 +80,15 @@ impl QueryRoot {
             // いいね数を取得
             let (like_count,): (i64,) =
                 sqlx::query_as("SELECT COUNT(*) FROM likes WHERE tweet_id = ?")
-                    .bind(&tweet.id)
+                    .bind(tweet.id)
                     .fetch_one(db)
                     .await?;
 
             let is_liked = if let Some(uid) = user_id {
                 let exists: Option<(i32,)> =
                     sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
-                        .bind(&tweet.id)
-                        .bind(uid.to_string())
+                        .bind(tweet.id)
+                        .bind(uid)
                         .fetch_optional(db)
                         .await?;
                 exists.is_some()
@@ -109,7 +109,7 @@ impl QueryRoot {
 
         if let Some(id) = user_id {
             let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
-                .bind(id.to_string())
+                .bind(id)
                 .fetch_optional(db)
                 .await?;
             Ok(user.map(UserType::from))
@@ -142,10 +142,11 @@ impl UserType {
     }
 }
 
+// UserからUserTypeへの変換（Uuid::parse_str不要）
 impl From<User> for UserType {
     fn from(user: User) -> Self {
         Self {
-            id: Uuid::parse_str(&user.id).expect("Invalid UUID"),
+            id: user.id,
             username: user.username,
             email: user.email,
         }
@@ -191,10 +192,11 @@ impl TweetType {
 }
 
 impl TweetType {
+    // TweetからTweetTypeへの変換（Uuid::parse_str不要）
     pub fn from_tweet(tweet: Tweet, like_count: i64, is_liked: bool) -> Self {
         Self {
-            id: Uuid::parse_str(&tweet.id).expect("Invalid UUID"),
-            user_id: Uuid::parse_str(&tweet.user_id).expect("Invalid UUID"),
+            id: tweet.id,
+            user_id: tweet.user_id,
             content: tweet.content,
             created_at: tweet.created_at,
             like_count,

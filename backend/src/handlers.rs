@@ -114,11 +114,11 @@ async fn register_user(
     let user_id = Uuid::new_v4();
     let created_at = Utc::now().to_rfc3339();
 
-    // ユーザーを挿入
+    // ユーザーを挿入（Uuidは自動でTEXTに変換される）
     sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
     )
-    .bind(user_id.to_string())
+    .bind(user_id)
     .bind(username)
     .bind(email)
     .bind(&password_hash)
@@ -127,7 +127,7 @@ async fn register_user(
     .await?;
 
     let user = User {
-        id: user_id.to_string(),
+        id: user_id,
         username: username.to_string(),
         email: email.to_string(),
         password_hash,
@@ -152,8 +152,8 @@ async fn login_user(db: &Db, email: &str, password: &str) -> Result<(User, Strin
         ));
     }
 
-    let user_id = Uuid::parse_str(&user.id).map_err(|e| AppError::Internal(e.to_string()))?;
-    let token = create_jwt(user_id)?;
+    // user.id は既に Uuid 型なので parse 不要
+    let token = create_jwt(user.id)?;
 
     Ok((user, token))
 }
@@ -169,8 +169,8 @@ async fn create_tweet_internal(db: &Db, user_id: Uuid, content: &str) -> Result<
     let created_at = Utc::now();
 
     sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
-        .bind(tweet_id.to_string())
-        .bind(user_id.to_string())
+        .bind(tweet_id)
+        .bind(user_id)
         .bind(content)
         .bind(created_at.to_rfc3339())
         .execute(db)
@@ -220,7 +220,7 @@ pub async fn create_tweet(
 
 pub async fn get_tweet(db: web::Data<Db>, path: web::Path<Uuid>) -> Result<HttpResponse> {
     let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
-        .bind(path.to_string())
+        .bind(*path)
         .fetch_optional(db.as_ref())
         .await?
         .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
@@ -236,22 +236,20 @@ pub async fn delete_tweet(
     let user_id = authenticate(&req_http)?;
 
     let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
-        .bind(path.to_string())
+        .bind(*path)
         .fetch_optional(db.as_ref())
         .await?
         .ok_or_else(|| AppError::NotFound("Tweet not found".to_string()))?;
 
-    // 所有者のみ削除可能
-    let tweet_user_id =
-        Uuid::parse_str(&tweet.user_id).map_err(|e| AppError::Internal(e.to_string()))?;
-    if tweet_user_id != user_id {
+    // 所有者のみ削除可能（tweet.user_id は既に Uuid 型）
+    if tweet.user_id != user_id {
         return Err(AppError::Unauthorized(
             "Not authorized to delete this tweet".to_string(),
         ));
     }
 
     sqlx::query("DELETE FROM tweets WHERE id = ?")
-        .bind(path.to_string())
+        .bind(*path)
         .execute(db.as_ref())
         .await?;
 
@@ -263,7 +261,7 @@ pub async fn get_timeline(req_http: HttpRequest, db: web::Data<Db>) -> Result<Ht
 
     let tweets: Vec<Tweet> =
         sqlx::query_as("SELECT * FROM tweets WHERE user_id = ? ORDER BY created_at DESC")
-            .bind(user_id.to_string())
+            .bind(user_id)
             .fetch_all(db.as_ref())
             .await?;
 

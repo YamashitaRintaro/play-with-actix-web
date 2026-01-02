@@ -32,7 +32,7 @@ impl MutationRoot {
         sqlx::query(
             "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(user_id.to_string())
+        .bind(user_id)
         .bind(&input.username)
         .bind(&input.email)
         .bind(&password_hash)
@@ -41,7 +41,7 @@ impl MutationRoot {
         .await?;
 
         let user = User {
-            id: user_id.to_string(),
+            id: user_id,
             username: input.username.clone(),
             email: input.email.clone(),
             password_hash,
@@ -72,9 +72,7 @@ impl MutationRoot {
             return Err(async_graphql::Error::new("Invalid email or password"));
         }
 
-        let user_id =
-            Uuid::parse_str(&user.id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        let token = create_jwt(user_id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let token = create_jwt(user.id).map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         Ok(AuthPayload {
             token,
@@ -96,8 +94,8 @@ impl MutationRoot {
         let created_at = Utc::now().to_rfc3339();
 
         sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
-            .bind(tweet_id.to_string())
-            .bind(user_id.to_string())
+            .bind(tweet_id)
+            .bind(user_id)
             .bind(&content)
             .bind(&created_at)
             .execute(db)
@@ -118,19 +116,17 @@ impl MutationRoot {
         let user_id = ctx.data::<Uuid>()?;
 
         let tweet: Tweet = sqlx::query_as("SELECT * FROM tweets WHERE id = ?")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(db)
             .await?
             .ok_or_else(|| async_graphql::Error::new("Tweet not found"))?;
 
-        let tweet_user_id = Uuid::parse_str(&tweet.user_id)
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        if tweet_user_id != *user_id {
+        if tweet.user_id != *user_id {
             return Err(async_graphql::Error::new("Not authorized"));
         }
 
         sqlx::query("DELETE FROM tweets WHERE id = ?")
-            .bind(id.to_string())
+            .bind(id)
             .execute(db)
             .await?;
 
@@ -141,11 +137,11 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // 既にいいね済みかチェック（存在確認のみなので1を選択）
+        // 既にいいね済みかチェック
         let already_liked: Option<(i32,)> =
             sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
-                .bind(tweet_id.to_string())
-                .bind(user_id.to_string())
+                .bind(tweet_id)
+                .bind(user_id)
                 .fetch_optional(db)
                 .await?;
 
@@ -153,9 +149,9 @@ impl MutationRoot {
             return Err(async_graphql::Error::new("Already liked"));
         }
 
-        // ツイートが存在するか確認（存在確認のみなので1を選択）
+        // ツイートが存在するか確認
         let tweet_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM tweets WHERE id = ?")
-            .bind(tweet_id.to_string())
+            .bind(tweet_id)
             .fetch_optional(db)
             .await?;
 
@@ -166,8 +162,8 @@ impl MutationRoot {
         // いいねを作成
         let created_at = Utc::now().to_rfc3339();
         sqlx::query("INSERT INTO likes (user_id, tweet_id, created_at) VALUES (?, ?, ?)")
-            .bind(user_id.to_string())
-            .bind(tweet_id.to_string())
+            .bind(user_id)
+            .bind(tweet_id)
             .bind(&created_at)
             .execute(db)
             .await?;
@@ -179,11 +175,11 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // いいねが存在するかチェック（存在確認のみなので1を選択）
+        // いいねが存在するかチェック
         let like_exists: Option<(i32,)> =
             sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
-                .bind(tweet_id.to_string())
-                .bind(user_id.to_string())
+                .bind(tweet_id)
+                .bind(user_id)
                 .fetch_optional(db)
                 .await?;
 
@@ -192,8 +188,8 @@ impl MutationRoot {
         }
 
         sqlx::query("DELETE FROM likes WHERE tweet_id = ? AND user_id = ?")
-            .bind(tweet_id.to_string())
-            .bind(user_id.to_string())
+            .bind(tweet_id)
+            .bind(user_id)
             .execute(db)
             .await?;
 
