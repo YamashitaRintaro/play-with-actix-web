@@ -222,7 +222,6 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // バリデーション
         if content.is_empty() || content.len() > 280 {
             return Err(async_graphql::Error::new(
                 "Comment content must be between 1 and 280 characters",

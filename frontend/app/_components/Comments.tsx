@@ -56,7 +56,6 @@ export function Comments({ tweetId, currentUserId, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-card rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
-        {/* Header */}
         <header className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold">💬 コメント</h2>
           <button
@@ -68,14 +67,12 @@ export function Comments({ tweetId, currentUserId, onClose }: Props) {
           </button>
         </header>
 
-        {/* Error */}
         {error && (
           <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-danger text-sm">
             {error.message}
           </div>
         )}
 
-        {/* Comments List */}
         <div className="flex-1 overflow-y-auto p-4">
           {fetching ? (
             <p className="text-muted text-center py-8">読み込み中...</p>
@@ -121,7 +118,6 @@ export function Comments({ tweetId, currentUserId, onClose }: Props) {
           )}
         </div>
 
-        {/* Comment Form */}
         <form
           onSubmit={handleSubmit}
           className="p-4 border-t border-border bg-slate-50 rounded-b-2xl"

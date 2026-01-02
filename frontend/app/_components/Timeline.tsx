@@ -75,7 +75,6 @@ export function Timeline({ user }: Props) {
   return (
     <main className="min-h-screen py-8">
       <div className="max-w-2xl mx-auto px-4">
-        {/* Header */}
         <header className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-primary">🐦 Twitter Clone</h1>
           <div className="flex items-center gap-4">
@@ -91,14 +90,12 @@ export function Timeline({ user }: Props) {
           </div>
         </header>
 
-        {/* Error */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-danger">
             {error.message}
           </div>
         )}
 
-        {/* Tweet Form */}
         <div className="bg-card rounded-2xl shadow-sm border border-border p-6 mb-8">
           <h2 className="text-lg font-semibold mb-4">新しいツイート</h2>
           <form onSubmit={handleSubmit}>
@@ -123,7 +120,6 @@ export function Timeline({ user }: Props) {
           </form>
         </div>
 
-        {/* Timeline */}
         <div className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden">
           <h2 className="text-lg font-semibold p-6 border-b border-border">
             タイムライン
