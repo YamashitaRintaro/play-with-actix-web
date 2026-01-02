@@ -83,3 +83,21 @@ pub fn authenticate(req: &HttpRequest) -> Result<Uuid, AppError> {
     let token = extract_bearer_token(req)?;
     verify_jwt(token)
 }
+
+/// ツイート本文からハッシュタグを抽出する
+/// 例: "Hello #rust #programming!" → ["rust", "programming"]
+pub fn extract_hashtags(content: &str) -> Vec<String> {
+    use regex::Regex;
+    use std::collections::HashSet;
+
+    // #の後に1文字以上の単語文字（英数字、アンダースコア）または日本語が続くパターン
+    let re = Regex::new(r"#([\w\p{Han}\p{Hiragana}\p{Katakana}]+)").unwrap();
+
+    // 重複を排除しつつ小文字に正規化
+    let unique_tags: HashSet<String> = re
+        .captures_iter(content)
+        .map(|cap| cap[1].to_lowercase())
+        .collect();
+
+    unique_tags.into_iter().collect()
+}

@@ -73,5 +73,48 @@ pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
         .execute(&pool)
         .await?;
 
+    // ハッシュタグテーブルの作成
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS hashtags (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL UNIQUE
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    // ツイートとハッシュタグの中間テーブル（多対多）
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS tweet_hashtags (
+            tweet_id TEXT NOT NULL,
+            hashtag_id TEXT NOT NULL,
+            PRIMARY KEY (tweet_id, hashtag_id),
+            FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE,
+            FOREIGN KEY (hashtag_id) REFERENCES hashtags(id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hashtags_name ON hashtags(name)")
+        .execute(&pool)
+        .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_tweet_hashtags_tweet_id ON tweet_hashtags(tweet_id)",
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_tweet_hashtags_hashtag_id ON tweet_hashtags(hashtag_id)",
+    )
+    .execute(&pool)
+    .await?;
+
     Ok(pool)
 }

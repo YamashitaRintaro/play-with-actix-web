@@ -27,6 +27,11 @@ pub struct LikeTweetId {
     pub tweet_id: Uuid,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct HashtagName {
+    pub name: String,
+}
+
 // リクエスト/レスポンス用の構造体
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {

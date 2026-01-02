@@ -2,7 +2,7 @@ use async_graphql::{Context, Object, Result};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::models::{LikeTweetId, Tweet, User};
+use crate::models::{HashtagName, LikeTweetId, Tweet, User};
 use crate::store::Db;
 
 pub struct QueryRoot;
@@ -55,12 +55,36 @@ impl QueryRoot {
         let user_likes: Vec<LikeTweetId> = query.fetch_all(db).await?;
         let liked_tweet_ids: HashSet<Uuid> = user_likes.into_iter().map(|l| l.tweet_id).collect();
 
+        // 各ツイートのハッシュタグを取得
+        let hashtags_query = format!(
+            r#"
+            SELECT th.tweet_id, h.name 
+            FROM tweet_hashtags th 
+            JOIN hashtags h ON th.hashtag_id = h.id 
+            WHERE th.tweet_id IN ({})
+            "#,
+            placeholders
+        );
+        let mut query = sqlx::query_as::<_, (Uuid, String)>(&hashtags_query);
+        for id in &tweet_ids {
+            query = query.bind(id);
+        }
+        let tweet_hashtags: Vec<(Uuid, String)> = query.fetch_all(db).await?;
+
+        // ツイートIDごとにハッシュタグをグループ化
+        let mut hashtag_map: std::collections::HashMap<Uuid, Vec<String>> =
+            std::collections::HashMap::new();
+        for (tweet_id, tag_name) in tweet_hashtags {
+            hashtag_map.entry(tweet_id).or_default().push(tag_name);
+        }
+
         let result: Vec<TweetType> = tweets
             .into_iter()
             .map(|tweet| {
                 let like_count = *like_count_map.get(&tweet.id).unwrap_or(&0);
                 let is_liked = liked_tweet_ids.contains(&tweet.id);
-                TweetType::from_tweet(tweet, like_count, is_liked)
+                let hashtags = hashtag_map.remove(&tweet.id).unwrap_or_default();
+                TweetType::from_tweet(tweet, like_count, is_liked, hashtags)
             })
             .collect();
 
@@ -96,7 +120,26 @@ impl QueryRoot {
                 false
             };
 
-            Ok(Some(TweetType::from_tweet(tweet, like_count, is_liked)))
+            // ハッシュタグを取得
+            let hashtags: Vec<HashtagName> = sqlx::query_as(
+                r#"
+                SELECT h.name 
+                FROM tweet_hashtags th 
+                JOIN hashtags h ON th.hashtag_id = h.id 
+                WHERE th.tweet_id = ?
+                "#,
+            )
+            .bind(tweet.id)
+            .fetch_all(db)
+            .await?;
+            let hashtag_names: Vec<String> = hashtags.into_iter().map(|h| h.name).collect();
+
+            Ok(Some(TweetType::from_tweet(
+                tweet,
+                like_count,
+                is_liked,
+                hashtag_names,
+            )))
         } else {
             Ok(None)
         }
@@ -162,6 +205,7 @@ pub struct TweetType {
     pub created_at: String,
     pub like_count: i64,
     pub is_liked: bool,
+    pub hashtags: Vec<String>,
 }
 
 #[Object]
@@ -189,11 +233,19 @@ impl TweetType {
     async fn is_liked(&self) -> bool {
         self.is_liked
     }
+
+    async fn hashtags(&self) -> &[String] {
+        &self.hashtags
+    }
 }
 
 impl TweetType {
-    // TweetからTweetTypeへの変換（Uuid::parse_str不要）
-    pub fn from_tweet(tweet: Tweet, like_count: i64, is_liked: bool) -> Self {
+    pub fn from_tweet(
+        tweet: Tweet,
+        like_count: i64,
+        is_liked: bool,
+        hashtags: Vec<String>,
+    ) -> Self {
         Self {
             id: tweet.id,
             user_id: tweet.user_id,
@@ -201,12 +253,13 @@ impl TweetType {
             created_at: tweet.created_at,
             like_count,
             is_liked,
+            hashtags,
         }
     }
 }
 
 impl From<Tweet> for TweetType {
     fn from(tweet: Tweet) -> Self {
-        Self::from_tweet(tweet, 0, false)
+        Self::from_tweet(tweet, 0, false, Vec::new())
     }
 }
