@@ -108,12 +108,16 @@ function ProfileViewContent({ userId, currentUserId }: Props) {
 
       <Card className="overflow-hidden">
         <TabList tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
-        <TabPanel
-          loading={loading}
-          emptyMessage={currentTab.emptyMessage}
-          users={users}
-          currentUserId={currentUserId}
-        />
+        <TabPanel loading={loading} emptyMessage={currentTab.emptyMessage}>
+          {users.map((user) => (
+            <UserListItem
+              key={user.id}
+              user={user}
+              currentUserId={currentUserId}
+              onFollowChange={handleRefetch}
+            />
+          ))}
+        </TabPanel>
       </Card>
     </>
   );
@@ -216,27 +220,26 @@ function TabList({
 function TabPanel({
   loading,
   emptyMessage,
-  users,
-  currentUserId,
+  children,
 }: {
   loading: boolean;
   emptyMessage: string;
-  users: UserType[];
-  currentUserId: string;
+  children: ReactNode;
 }) {
   if (loading) {
     return <p className="p-6 text-center text-muted">読み込み中...</p>;
   }
 
-  if (users.length === 0) {
-    return <p className="p-6 text-center text-muted">{emptyMessage}</p>;
-  }
+  const isEmpty =
+    !children || (Array.isArray(children) && children.length === 0);
 
   return (
     <div role="tabpanel" className="divide-y divide-border">
-      {users.map((user) => (
-        <UserListItem key={user.id} user={user} currentUserId={currentUserId} />
-      ))}
+      {isEmpty ? (
+        <p className="p-6 text-center text-muted">{emptyMessage}</p>
+      ) : (
+        children
+      )}
     </div>
   );
 }
@@ -281,35 +284,16 @@ function FollowButton({
   );
 }
 
-function useFollowToggle(userId: string, initialIsFollowing: boolean) {
-  const [{ fetching: isFollowPending }, followUser] = useFollowUserMutation();
-  const [{ fetching: isUnfollowPending }, unfollowUser] =
-    useUnfollowUserMutation();
-  const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
-
-  const isPending = isFollowPending || isUnfollowPending;
-
-  const toggle = useCallback(async () => {
-    const result = isFollowing
-      ? await unfollowUser({ userId })
-      : await followUser({ userId });
-
-    if (!result.error) {
-      setIsFollowing((prev) => !prev);
-    }
-  }, [userId, isFollowing, followUser, unfollowUser]);
-
-  return { isFollowing, isPending, toggle };
-}
-
 function FollowAction({
   userId,
   user,
   onSuccess,
+  size = "default",
 }: {
   userId: string;
   user: UserInfo;
   onSuccess: () => void;
+  size?: Size;
 }) {
   const [{ fetching: isFollowPending }, followUser] = useFollowUserMutation();
   const [{ fetching: isUnfollowPending }, unfollowUser] =
@@ -332,6 +316,7 @@ function FollowAction({
       isFollowing={user.isFollowing}
       isPending={isPending}
       onClick={handleToggle}
+      size={size}
     />
   );
 }
@@ -339,15 +324,13 @@ function FollowAction({
 function UserListItem({
   user,
   currentUserId,
+  onFollowChange,
 }: {
   user: UserInfo;
   currentUserId: string;
+  onFollowChange: () => void;
 }) {
   const isOwnProfile = user.id === currentUserId;
-  const { isFollowing, isPending, toggle } = useFollowToggle(
-    user.id,
-    user.isFollowing
-  );
 
   return (
     <div className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
@@ -360,10 +343,10 @@ function UserListItem({
         </div>
       </Link>
       {!isOwnProfile && (
-        <FollowButton
-          isFollowing={isFollowing}
-          isPending={isPending}
-          onClick={toggle}
+        <FollowAction
+          userId={user.id}
+          user={user}
+          onSuccess={onFollowChange}
           size="small"
         />
       )}
