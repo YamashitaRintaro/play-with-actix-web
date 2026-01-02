@@ -32,6 +32,16 @@ pub struct HashtagName {
     pub name: String,
 }
 
+/// コメント
+#[derive(Debug, Clone, FromRow)]
+pub struct Comment {
+    pub id: Uuid,
+    pub tweet_id: Uuid,
+    pub user_id: Uuid,
+    pub content: String,
+    pub created_at: String,
+}
+
 // リクエスト/レスポンス用の構造体
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
