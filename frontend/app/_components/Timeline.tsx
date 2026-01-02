@@ -21,11 +21,11 @@ export function Timeline({ user }: Props) {
     useTimelineQuery();
   const [{ fetching: isCreating, error: createError }, createTweet] =
     useCreateTweetMutation();
-  const [{ fetching: isDeleting, error: deleteError }, deleteTweet] =
-    useDeleteTweetMutation();
-  const [{ fetching: isLiking }, likeTweet] = useLikeTweetMutation();
-  const [{ fetching: isUnliking }, unlikeTweet] = useUnlikeTweetMutation();
   const [content, setContent] = useState("");
+
+  const refetch = useCallback(() => {
+    reexecuteQuery({ requestPolicy: "network-only" });
+  }, [reexecuteQuery]);
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
@@ -36,41 +36,14 @@ export function Timeline({ user }: Props) {
 
       if (!result.error) {
         setContent("");
-        reexecuteQuery({ requestPolicy: "network-only" });
+        refetch();
       }
     },
-    [content, createTweet, reexecuteQuery]
-  );
-
-  const handleDelete = useCallback(
-    async (tweetId: string) => {
-      if (!confirm("このツイートを削除しますか？")) return;
-
-      const result = await deleteTweet({ id: tweetId });
-
-      if (!result.error) {
-        reexecuteQuery({ requestPolicy: "network-only" });
-      }
-    },
-    [deleteTweet, reexecuteQuery]
-  );
-
-  const handleLike = useCallback(
-    async (tweetId: string, isLiked: boolean) => {
-      const result = isLiked
-        ? await unlikeTweet({ tweetId })
-        : await likeTweet({ tweetId });
-
-      if (!result.error) {
-        reexecuteQuery({ requestPolicy: "network-only" });
-      }
-    },
-    [likeTweet, unlikeTweet, reexecuteQuery]
+    [content, createTweet, refetch]
   );
 
   const tweets = data?.timeline ?? [];
-  const error = queryError || createError || deleteError;
-  const isLikeActionPending = isLiking || isUnliking;
+  const error = queryError || createError;
 
   return (
     <main className="min-h-screen py-8">
@@ -142,29 +115,11 @@ export function Timeline({ user }: Props) {
                       {tweet.content}
                     </p>
                     {tweet.userId === user.id && (
-                      <button
-                        onClick={() => handleDelete(tweet.id)}
-                        disabled={isDeleting}
-                        className="text-muted hover:text-danger transition-colors disabled:opacity-50"
-                        title="削除"
-                      >
-                        🗑️
-                      </button>
+                      <DeleteButton tweetId={tweet.id} onSuccess={refetch} />
                     )}
                   </div>
 
-                  {tweet.hashtags && tweet.hashtags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {tweet.hashtags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <HashtagList hashtags={tweet.hashtags ?? []} />
 
                   <div className="flex items-center justify-between mt-3">
                     <time className="text-sm text-muted">
@@ -175,24 +130,12 @@ export function Timeline({ user }: Props) {
                         tweetId={tweet.id}
                         currentUserId={user.id}
                       />
-
-                      <button
-                        onClick={() => handleLike(tweet.id, tweet.isLiked)}
-                        disabled={isLikeActionPending}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                          tweet.isLiked
-                            ? "text-red-500 hover:bg-red-50"
-                            : "text-muted hover:bg-gray-100"
-                        }`}
-                        title={tweet.isLiked ? "いいねを解除" : "いいね"}
-                      >
-                        <span className="text-lg">
-                          {tweet.isLiked ? "❤️" : "🤍"}
-                        </span>
-                        <span className="text-sm font-medium">
-                          {tweet.likeCount > 0 && tweet.likeCount}
-                        </span>
-                      </button>
+                      <LikeButton
+                        tweetId={tweet.id}
+                        isLiked={tweet.isLiked}
+                        likeCount={tweet.likeCount}
+                        onSuccess={refetch}
+                      />
                     </div>
                   </div>
                 </li>
@@ -202,5 +145,98 @@ export function Timeline({ user }: Props) {
         </div>
       </div>
     </main>
+  );
+}
+
+function LikeButton({
+  tweetId,
+  isLiked,
+  likeCount,
+  onSuccess,
+}: {
+  tweetId: string;
+  isLiked: boolean;
+  likeCount: number;
+  onSuccess: () => void;
+}) {
+  const [{ fetching: isLiking }, likeTweet] = useLikeTweetMutation();
+  const [{ fetching: isUnliking }, unlikeTweet] = useUnlikeTweetMutation();
+
+  const handleToggle = useCallback(async () => {
+    const result = isLiked
+      ? await unlikeTweet({ tweetId })
+      : await likeTweet({ tweetId });
+
+    if (!result.error) {
+      onSuccess();
+    }
+  }, [tweetId, isLiked, likeTweet, unlikeTweet, onSuccess]);
+
+  const isPending = isLiking || isUnliking;
+
+  return (
+    <button
+      onClick={handleToggle}
+      disabled={isPending}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        isLiked
+          ? "text-red-500 hover:bg-red-50"
+          : "text-muted hover:bg-gray-100"
+      }`}
+      title={isLiked ? "いいねを解除" : "いいね"}
+    >
+      <span className="text-lg">{isLiked ? "❤️" : "🤍"}</span>
+      {likeCount > 0 && (
+        <span className="text-sm font-medium">{likeCount}</span>
+      )}
+    </button>
+  );
+}
+
+function HashtagList({ hashtags }: { hashtags: string[] }) {
+  if (hashtags.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-3">
+      {hashtags.map((tag) => (
+        <span
+          key={tag}
+          className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
+        >
+          #{tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function DeleteButton({
+  tweetId,
+  onSuccess,
+}: {
+  tweetId: string;
+  onSuccess: () => void;
+}) {
+  const [{ fetching }, deleteTweet] = useDeleteTweetMutation();
+
+  const handleDelete = useCallback(async () => {
+    if (!confirm("このツイートを削除しますか？")) return;
+
+    const result = await deleteTweet({ id: tweetId });
+
+    if (!result.error) {
+      onSuccess();
+    }
+  }, [tweetId, deleteTweet, onSuccess]);
+
+  return (
+    <button
+      onClick={handleDelete}
+      disabled={fetching}
+      className="text-muted hover:text-danger transition-colors disabled:opacity-50"
+      title="削除"
+    >
+      🗑️
+    </button>
   );
 }
