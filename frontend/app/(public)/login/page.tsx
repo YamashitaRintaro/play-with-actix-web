@@ -1,11 +1,11 @@
 "use client";
 
-import { register } from "@/app/actions/auth";
+import { login } from "@/app/actions/auth";
 import Link from "next/link";
 import { useActionState } from "react";
 
-export default function RegisterPage() {
-  const [state, action, pending] = useActionState(register, undefined);
+export default function LoginPage() {
+  const [state, action, pending] = useActionState(login, undefined);
 
   return (
     <main className="min-h-screen flex items-center justify-center py-12 px-4">
@@ -22,15 +22,6 @@ export default function RegisterPage() {
           )}
 
           <form action={action} className="space-y-5">
-            <div>
-              <input
-                type="text"
-                name="username"
-                placeholder="ユーザー名"
-                required
-                className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-              />
-            </div>
             <div>
               <input
                 type="email"
@@ -54,17 +45,17 @@ export default function RegisterPage() {
               disabled={pending}
               className="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {pending ? "登録中..." : "新規登録"}
+              {pending ? "ログイン中..." : "ログイン"}
             </button>
           </form>
 
           <p className="mt-6 text-center text-muted">
-            すでにアカウントをお持ちの方は{" "}
+            アカウントをお持ちでない方は{" "}
             <Link
-              href="/login"
+              href="/register"
               className="text-primary hover:underline font-medium"
             >
-              ログイン
+              新規登録
             </Link>
           </p>
         </div>
@@ -72,3 +63,4 @@ export default function RegisterPage() {
     </main>
   );
 }
+

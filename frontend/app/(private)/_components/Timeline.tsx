@@ -1,22 +1,20 @@
 "use client";
 
-import { logout } from "@/app/actions/auth";
 import {
   useTimelineQuery,
   useCreateTweetMutation,
   useDeleteTweetMutation,
   useLikeTweetMutation,
   useUnlikeTweetMutation,
-  type UserType,
 } from "@/lib/graphql/generated/urql";
 import { useState, useCallback, type FormEvent } from "react";
 import { TweetComments } from "./TweetComments";
 
 interface Props {
-  user: Pick<UserType, "id" | "username" | "email">;
+  userId: string;
 }
 
-export function Timeline({ user }: Props) {
+export function Timeline({ userId }: Props) {
   const [{ data, fetching, error: queryError }, reexecuteQuery] =
     useTimelineQuery();
   const [{ fetching: isCreating, error: createError }, createTweet] =
@@ -46,23 +44,8 @@ export function Timeline({ user }: Props) {
   const error = queryError || createError;
 
   return (
-    <main className="min-h-screen py-8">
+    <div className="py-8">
       <div className="max-w-2xl mx-auto px-4">
-        <header className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-primary">🐦 Twitter Clone</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-muted">@{user.username}</span>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-danger text-white rounded-full font-medium hover:bg-danger-hover transition-colors"
-              >
-                ログアウト
-              </button>
-            </form>
-          </div>
-        </header>
-
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-danger">
             {error.message}
@@ -114,7 +97,7 @@ export function Timeline({ user }: Props) {
                     <p className="flex-1 whitespace-pre-wrap break-words">
                       {tweet.content}
                     </p>
-                    {tweet.userId === user.id && (
+                    {tweet.userId === userId && (
                       <DeleteButton tweetId={tweet.id} onSuccess={refetch} />
                     )}
                   </div>
@@ -128,7 +111,7 @@ export function Timeline({ user }: Props) {
                     <div className="flex items-center gap-2">
                       <TweetComments
                         tweetId={tweet.id}
-                        currentUserId={user.id}
+                        currentUserId={userId}
                       />
                       <LikeButton
                         tweetId={tweet.id}
@@ -144,7 +127,7 @@ export function Timeline({ user }: Props) {
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 
