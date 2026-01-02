@@ -116,5 +116,34 @@ pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // コメントテーブルの作成
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS comments (
+            id TEXT PRIMARY KEY NOT NULL,
+            tweet_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_comments_tweet_id ON comments(tweet_id)")
+        .execute(&pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id)")
+        .execute(&pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at)")
+        .execute(&pool)
+        .await?;
+
     Ok(pool)
 }

@@ -2,7 +2,7 @@ use async_graphql::{Context, Object, Result};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::models::{HashtagName, LikeTweetId, Tweet, User};
+use crate::models::{Comment, HashtagName, LikeTweetId, Tweet, User};
 use crate::store::Db;
 
 pub struct QueryRoot;
@@ -160,6 +160,19 @@ impl QueryRoot {
             Ok(None)
         }
     }
+
+    /// ツイートへのコメント一覧を取得
+    async fn comments(&self, ctx: &Context<'_>, tweet_id: Uuid) -> Result<Vec<CommentType>> {
+        let db = ctx.data::<Db>()?;
+
+        let comments: Vec<Comment> =
+            sqlx::query_as("SELECT * FROM comments WHERE tweet_id = ? ORDER BY created_at ASC")
+                .bind(tweet_id)
+                .fetch_all(db)
+                .await?;
+
+        Ok(comments.into_iter().map(CommentType::from).collect())
+    }
 }
 
 /// GraphQL用のユーザー型
@@ -261,5 +274,60 @@ impl TweetType {
 impl From<Tweet> for TweetType {
     fn from(tweet: Tweet) -> Self {
         Self::from_tweet(tweet, 0, false, Vec::new())
+    }
+}
+
+/// GraphQL用のコメント型
+#[derive(Clone)]
+pub struct CommentType {
+    pub id: Uuid,
+    pub tweet_id: Uuid,
+    pub user_id: Uuid,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[Object]
+impl CommentType {
+    async fn id(&self) -> Uuid {
+        self.id
+    }
+
+    async fn tweet_id(&self) -> Uuid {
+        self.tweet_id
+    }
+
+    async fn user_id(&self) -> Uuid {
+        self.user_id
+    }
+
+    async fn content(&self) -> &str {
+        &self.content
+    }
+
+    async fn created_at(&self) -> &str {
+        &self.created_at
+    }
+
+    /// コメント投稿者の情報を取得
+    async fn user(&self, ctx: &Context<'_>) -> Result<Option<UserType>> {
+        let db = ctx.data::<Db>()?;
+        let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+            .bind(self.user_id)
+            .fetch_optional(db)
+            .await?;
+        Ok(user.map(UserType::from))
+    }
+}
+
+impl From<Comment> for CommentType {
+    fn from(comment: Comment) -> Self {
+        Self {
+            id: comment.id,
+            tweet_id: comment.tweet_id,
+            user_id: comment.user_id,
+            content: comment.content,
+            created_at: comment.created_at,
+        }
     }
 }

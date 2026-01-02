@@ -11,4 +11,17 @@ fragment TweetFields on TweetType {
   createdAt
   likeCount
   isLiked
+  hashtags
+}
+
+fragment CommentFields on CommentType {
+  id
+  tweetId
+  userId
+  content
+  createdAt
+  user {
+    id
+    username
+  }
 }

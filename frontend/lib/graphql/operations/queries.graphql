@@ -17,3 +17,9 @@ query Tweet($id: UUID!) {
     ...TweetFields
   }
 }
+
+query Comments($tweetId: UUID!) {
+  comments(tweetId: $tweetId) {
+    ...CommentFields
+  }
+}

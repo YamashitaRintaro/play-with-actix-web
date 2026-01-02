@@ -24,6 +24,17 @@ export type AuthPayload = {
   user: UserType;
 };
 
+export type CommentType = {
+  __typename?: 'CommentType';
+  content: Scalars['String']['output'];
+  createdAt: Scalars['String']['output'];
+  id: Scalars['UUID']['output'];
+  tweetId: Scalars['UUID']['output'];
+  /** コメント投稿者の情報を取得 */
+  user?: Maybe<UserType>;
+  userId: Scalars['UUID']['output'];
+};
+
 /** ログイン入力 */
 export type LoginInput = {
   email: Scalars['String']['input'];
@@ -32,23 +43,32 @@ export type LoginInput = {
 
 export type MutationRoot = {
   __typename?: 'MutationRoot';
-  /** ツイート作成 */
+  /** コメントを作成 */
+  createComment: CommentType;
   createTweet: TweetType;
-  /** ツイート削除 */
+  /** コメントを削除（投稿者のみ） */
+  deleteComment: Scalars['Boolean']['output'];
   deleteTweet: Scalars['Boolean']['output'];
-  /** ツイートにいいね */
   likeTweet: Scalars['Boolean']['output'];
-  /** ログイン */
   login: AuthPayload;
-  /** ユーザー登録 */
   register: AuthPayload;
-  /** ツイートのいいねを解除 */
   unlikeTweet: Scalars['Boolean']['output'];
+};
+
+
+export type MutationRootCreateCommentArgs = {
+  content: Scalars['String']['input'];
+  tweetId: Scalars['UUID']['input'];
 };
 
 
 export type MutationRootCreateTweetArgs = {
   content: Scalars['String']['input'];
+};
+
+
+export type MutationRootDeleteCommentArgs = {
+  id: Scalars['UUID']['input'];
 };
 
 
@@ -78,12 +98,18 @@ export type MutationRootUnlikeTweetArgs = {
 
 export type QueryRoot = {
   __typename?: 'QueryRoot';
+  /** ツイートへのコメント一覧を取得 */
+  comments: Array<CommentType>;
   /** 現在のユーザー情報を取得 */
   me?: Maybe<UserType>;
   /** 現在のユーザーのタイムラインを取得 */
   timeline: Array<TweetType>;
-  /** 特定のツイートを取得 */
   tweet?: Maybe<TweetType>;
+};
+
+
+export type QueryRootCommentsArgs = {
+  tweetId: Scalars['UUID']['input'];
 };
 
 
@@ -102,6 +128,7 @@ export type TweetType = {
   __typename?: 'TweetType';
   content: Scalars['String']['output'];
   createdAt: Scalars['String']['output'];
+  hashtags: Array<Scalars['String']['output']>;
   id: Scalars['UUID']['output'];
   isLiked: Scalars['Boolean']['output'];
   likeCount: Scalars['Int']['output'];
@@ -117,7 +144,9 @@ export type UserType = {
 
 export type UserFieldsFragment = { __typename?: 'UserType', id: string, username: string, email: string };
 
-export type TweetFieldsFragment = { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean };
+export type TweetFieldsFragment = { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> };
+
+export type CommentFieldsFragment = { __typename?: 'CommentType', id: string, tweetId: string, userId: string, content: string, createdAt: string, user?: { __typename?: 'UserType', id: string, username: string } | null };
 
 export type RegisterMutationVariables = Exact<{
   input: RegisterInput;
@@ -138,7 +167,7 @@ export type CreateTweetMutationVariables = Exact<{
 }>;
 
 
-export type CreateTweetMutation = { __typename?: 'MutationRoot', createTweet: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean } };
+export type CreateTweetMutation = { __typename?: 'MutationRoot', createTweet: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> } };
 
 export type DeleteTweetMutationVariables = Exact<{
   id: Scalars['UUID']['input'];
@@ -161,6 +190,21 @@ export type UnlikeTweetMutationVariables = Exact<{
 
 export type UnlikeTweetMutation = { __typename?: 'MutationRoot', unlikeTweet: boolean };
 
+export type CreateCommentMutationVariables = Exact<{
+  tweetId: Scalars['UUID']['input'];
+  content: Scalars['String']['input'];
+}>;
+
+
+export type CreateCommentMutation = { __typename?: 'MutationRoot', createComment: { __typename?: 'CommentType', id: string, tweetId: string, userId: string, content: string, createdAt: string, user?: { __typename?: 'UserType', id: string, username: string } | null } };
+
+export type DeleteCommentMutationVariables = Exact<{
+  id: Scalars['UUID']['input'];
+}>;
+
+
+export type DeleteCommentMutation = { __typename?: 'MutationRoot', deleteComment: boolean };
+
 export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -169,14 +213,21 @@ export type MeQuery = { __typename?: 'QueryRoot', me?: { __typename?: 'UserType'
 export type TimelineQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type TimelineQuery = { __typename?: 'QueryRoot', timeline: Array<{ __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean }> };
+export type TimelineQuery = { __typename?: 'QueryRoot', timeline: Array<{ __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> }> };
 
 export type TweetQueryVariables = Exact<{
   id: Scalars['UUID']['input'];
 }>;
 
 
-export type TweetQuery = { __typename?: 'QueryRoot', tweet?: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean } | null };
+export type TweetQuery = { __typename?: 'QueryRoot', tweet?: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> } | null };
+
+export type CommentsQueryVariables = Exact<{
+  tweetId: Scalars['UUID']['input'];
+}>;
+
+
+export type CommentsQuery = { __typename?: 'QueryRoot', comments: Array<{ __typename?: 'CommentType', id: string, tweetId: string, userId: string, content: string, createdAt: string, user?: { __typename?: 'UserType', id: string, username: string } | null }> };
 
 export const UserFieldsFragmentDoc = gql`
     fragment UserFields on UserType {
@@ -193,6 +244,20 @@ export const TweetFieldsFragmentDoc = gql`
   createdAt
   likeCount
   isLiked
+  hashtags
+}
+    `;
+export const CommentFieldsFragmentDoc = gql`
+    fragment CommentFields on CommentType {
+  id
+  tweetId
+  userId
+  content
+  createdAt
+  user {
+    id
+    username
+  }
 }
     `;
 export const RegisterDocument = gql`
@@ -261,6 +326,26 @@ export const UnlikeTweetDocument = gql`
 export function useUnlikeTweetMutation() {
   return Urql.useMutation<UnlikeTweetMutation, UnlikeTweetMutationVariables>(UnlikeTweetDocument);
 };
+export const CreateCommentDocument = gql`
+    mutation CreateComment($tweetId: UUID!, $content: String!) {
+  createComment(tweetId: $tweetId, content: $content) {
+    ...CommentFields
+  }
+}
+    ${CommentFieldsFragmentDoc}`;
+
+export function useCreateCommentMutation() {
+  return Urql.useMutation<CreateCommentMutation, CreateCommentMutationVariables>(CreateCommentDocument);
+};
+export const DeleteCommentDocument = gql`
+    mutation DeleteComment($id: UUID!) {
+  deleteComment(id: $id)
+}
+    `;
+
+export function useDeleteCommentMutation() {
+  return Urql.useMutation<DeleteCommentMutation, DeleteCommentMutationVariables>(DeleteCommentDocument);
+};
 export const MeDocument = gql`
     query Me {
   me {
@@ -293,4 +378,15 @@ export const TweetDocument = gql`
 
 export function useTweetQuery(options: Omit<Urql.UseQueryArgs<TweetQueryVariables>, 'query'>) {
   return Urql.useQuery<TweetQuery, TweetQueryVariables>({ query: TweetDocument, ...options });
+};
+export const CommentsDocument = gql`
+    query Comments($tweetId: UUID!) {
+  comments(tweetId: $tweetId) {
+    ...CommentFields
+  }
+}
+    ${CommentFieldsFragmentDoc}`;
+
+export function useCommentsQuery(options: Omit<Urql.UseQueryArgs<CommentsQueryVariables>, 'query'>) {
+  return Urql.useQuery<CommentsQuery, CommentsQueryVariables>({ query: CommentsDocument, ...options });
 };

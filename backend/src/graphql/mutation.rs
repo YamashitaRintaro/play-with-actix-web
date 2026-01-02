@@ -2,7 +2,7 @@ use async_graphql::{Context, InputObject, Object, Result};
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::graphql::query::{TweetType, UserType};
+use crate::graphql::query::{CommentType, TweetType, UserType};
 use crate::models::User;
 use crate::store::Db;
 use crate::utils::{create_jwt, extract_hashtags, hash_password, verify_password};
@@ -207,6 +207,75 @@ impl MutationRoot {
 
         if result.rows_affected() == 0 {
             return Err(async_graphql::Error::new("Like not found"));
+        }
+
+        Ok(true)
+    }
+
+    /// コメントを作成
+    async fn create_comment(
+        &self,
+        ctx: &Context<'_>,
+        tweet_id: Uuid,
+        content: String,
+    ) -> Result<CommentType> {
+        let db = ctx.data::<Db>()?;
+        let user_id = ctx.data::<Uuid>()?;
+
+        if content.is_empty() || content.len() > 280 {
+            return Err(async_graphql::Error::new(
+                "Comment content must be between 1 and 280 characters",
+            ));
+        }
+
+        // ツイートが存在するか確認
+        let tweet_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM tweets WHERE id = ?")
+            .bind(tweet_id)
+            .fetch_optional(db)
+            .await?;
+
+        if tweet_exists.is_none() {
+            return Err(async_graphql::Error::new("Tweet not found"));
+        }
+
+        let comment_id = Uuid::new_v4();
+        let created_at = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO comments (id, tweet_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(comment_id)
+        .bind(tweet_id)
+        .bind(user_id)
+        .bind(&content)
+        .bind(&created_at)
+        .execute(db)
+        .await?;
+
+        Ok(CommentType {
+            id: comment_id,
+            tweet_id,
+            user_id: *user_id,
+            content,
+            created_at,
+        })
+    }
+
+    /// コメントを削除（投稿者のみ）
+    async fn delete_comment(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+        let db = ctx.data::<Db>()?;
+        let user_id = ctx.data::<Uuid>()?;
+
+        let result = sqlx::query("DELETE FROM comments WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .execute(db)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(async_graphql::Error::new(
+                "Comment not found or not authorized",
+            ));
         }
 
         Ok(true)
