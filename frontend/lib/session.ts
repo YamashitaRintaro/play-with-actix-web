@@ -1,38 +1,34 @@
 import "server-only";
 
-import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import type { SessionUser as User } from "./types";
+import type { SessionUser } from "./types";
 
 const SECRET_KEY =
   process.env.SESSION_SECRET || "your-secret-key-min-32-chars!!";
 const ENCODED_KEY = new TextEncoder().encode(SECRET_KEY);
 const COOKIE_NAME = "session";
+const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24時間
 
 interface SessionPayload {
-  user: User;
+  user: SessionUser;
   token: string;
-  expiresAt: Date;
+  expiresAt: string;
 }
 
-/** セッションを暗号化 */
-async function encrypt(
-  user: User,
-  token: string,
-  expiresAt: Date
-): Promise<string> {
-  const payload: JWTPayload = { user, token, expiresAt };
-  return new SignJWT(payload)
+/** セッションを暗号化してJWTを生成 */
+async function encrypt(payload: SessionPayload): Promise<string> {
+  return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("1d")
+    .setExpirationTime("1d") // 1 day
     .sign(ENCODED_KEY);
 }
 
-/** セッションを復号 */
-async function decrypt(session: string): Promise<SessionPayload | null> {
+/** JWTを復号してセッションペイロードを取得 */
+async function decrypt(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify<SessionPayload>(session, ENCODED_KEY, {
+    const { payload } = await jwtVerify<SessionPayload>(token, ENCODED_KEY, {
       algorithms: ["HS256"],
     });
     return payload;
@@ -42,9 +38,16 @@ async function decrypt(session: string): Promise<SessionPayload | null> {
 }
 
 /** セッションを作成してCookieに保存 */
-export async function createSession(user: User, token: string): Promise<void> {
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const session = await encrypt(user, token, expiresAt);
+export async function createSession(
+  user: SessionUser,
+  token: string
+): Promise<void> {
+  const expiresAt = new Date(Date.now() + SESSION_DURATION);
+  const session = await encrypt({
+    user,
+    token,
+    expiresAt: expiresAt.toISOString(),
+  });
 
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, session, {
@@ -62,22 +65,52 @@ export async function deleteSession(): Promise<void> {
   cookieStore.delete(COOKIE_NAME);
 }
 
-/** 現在のセッションを取得 */
-export async function getSession(): Promise<SessionPayload | null> {
+/** セッションを検証して返す */
+export async function verifySession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
-  const session = cookieStore.get(COOKIE_NAME)?.value;
-  if (!session) return null;
-  return decrypt(session);
+  const sessionCookie = cookieStore.get(COOKIE_NAME)?.value;
+
+  if (!sessionCookie) {
+    return null;
+  }
+
+  const payload = await decrypt(sessionCookie);
+
+  if (!payload) {
+    return null;
+  }
+
+  // 有効期限チェック
+  const expiresAt = new Date(payload.expiresAt);
+  if (expiresAt < new Date()) {
+    return null;
+  }
+
+  return payload;
 }
 
-/** 現在のユーザーを取得 */
-export async function getCurrentUser(): Promise<User | null> {
-  const session = await getSession();
-  return session?.user ?? null;
+/** Middleware用: セッションを検証 */
+export async function verifySessionFromCookie(
+  sessionCookie: string | undefined
+): Promise<SessionPayload | null> {
+  if (!sessionCookie) {
+    return null;
+  }
+
+  const payload = await decrypt(sessionCookie);
+
+  if (!payload) {
+    return null;
+  }
+
+  // 有効期限チェック
+  const expiresAt = new Date(payload.expiresAt);
+  if (expiresAt < new Date()) {
+    return null;
+  }
+
+  return payload;
 }
 
-/** APIトークンを取得 */
-export async function getApiToken(): Promise<string | null> {
-  const session = await getSession();
-  return session?.token ?? null;
-}
+/** Cookie名をエクスポート */
+export const SESSION_COOKIE_NAME = COOKIE_NAME;
