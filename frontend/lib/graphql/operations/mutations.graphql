@@ -35,3 +35,13 @@ mutation LikeTweet($tweetId: UUID!) {
 mutation UnlikeTweet($tweetId: UUID!) {
   unlikeTweet(tweetId: $tweetId)
 }
+
+mutation CreateComment($tweetId: UUID!, $content: String!) {
+  createComment(tweetId: $tweetId, content: $content) {
+    ...CommentFields
+  }
+}
+
+mutation DeleteComment($id: UUID!) {
+  deleteComment(id: $id)
+}

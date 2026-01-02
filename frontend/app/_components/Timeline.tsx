@@ -10,6 +10,7 @@ import {
   type UserType,
 } from "@/lib/graphql/generated/urql";
 import { useState, useCallback, type FormEvent } from "react";
+import { TweetComments } from "./TweetComments";
 
 interface Props {
   user: Pick<UserType, "id" | "username" | "email">;
@@ -155,27 +156,48 @@ export function Timeline({ user }: Props) {
                       </button>
                     )}
                   </div>
+
+                  {tweet.hashtags && tweet.hashtags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {tweet.hashtags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between mt-3">
                     <time className="text-sm text-muted">
                       {new Date(tweet.createdAt).toLocaleString("ja-JP")}
                     </time>
-                    <button
-                      onClick={() => handleLike(tweet.id, tweet.isLiked)}
-                      disabled={isLikeActionPending}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                        tweet.isLiked
-                          ? "text-red-500 hover:bg-red-50"
-                          : "text-muted hover:bg-gray-100"
-                      }`}
-                      title={tweet.isLiked ? "いいねを解除" : "いいね"}
-                    >
-                      <span className="text-lg">
-                        {tweet.isLiked ? "❤️" : "🤍"}
-                      </span>
-                      <span className="text-sm font-medium">
-                        {tweet.likeCount > 0 && tweet.likeCount}
-                      </span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <TweetComments
+                        tweetId={tweet.id}
+                        currentUserId={user.id}
+                      />
+
+                      <button
+                        onClick={() => handleLike(tweet.id, tweet.isLiked)}
+                        disabled={isLikeActionPending}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          tweet.isLiked
+                            ? "text-red-500 hover:bg-red-50"
+                            : "text-muted hover:bg-gray-100"
+                        }`}
+                        title={tweet.isLiked ? "いいねを解除" : "いいね"}
+                      >
+                        <span className="text-lg">
+                          {tweet.isLiked ? "❤️" : "🤍"}
+                        </span>
+                        <span className="text-sm font-medium">
+                          {tweet.likeCount > 0 && tweet.likeCount}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </li>
               ))}
