@@ -280,6 +280,68 @@ impl MutationRoot {
 
         Ok(true)
     }
+
+    /// ユーザーをフォロー
+    async fn follow_user(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<bool> {
+        let db = ctx.data::<Db>()?;
+        let follower_id = ctx.data::<Uuid>()?;
+
+        // 自分自身をフォローしようとしている場合
+        if *follower_id == user_id {
+            return Err(async_graphql::Error::new("Cannot follow yourself"));
+        }
+
+        // フォロー対象のユーザーが存在するか確認
+        let user_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?;
+
+        if user_exists.is_none() {
+            return Err(async_graphql::Error::new("User not found"));
+        }
+
+        // 既にフォロー済みかチェック
+        let already_following: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?")
+                .bind(follower_id)
+                .bind(user_id)
+                .fetch_optional(db)
+                .await?;
+
+        if already_following.is_some() {
+            return Err(async_graphql::Error::new("Already following this user"));
+        }
+
+        // フォローを作成
+        let created_at = Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO follows (follower_id, following_id, created_at) VALUES (?, ?, ?)")
+            .bind(follower_id)
+            .bind(user_id)
+            .bind(&created_at)
+            .execute(db)
+            .await?;
+
+        Ok(true)
+    }
+
+    /// ユーザーのフォローを解除
+    async fn unfollow_user(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<bool> {
+        let db = ctx.data::<Db>()?;
+        let follower_id = ctx.data::<Uuid>()?;
+
+        let result = sqlx::query("DELETE FROM follows WHERE follower_id = ? AND following_id = ?")
+            .bind(follower_id)
+            .bind(user_id)
+            .execute(db)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(async_graphql::Error::new("Not following this user"));
+        }
+
+        Ok(true)
+    }
 }
 
 /// 登録入力

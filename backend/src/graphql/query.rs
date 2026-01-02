@@ -9,17 +9,24 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    /// 現在のユーザーのタイムラインを取得
+    /// 現在のユーザーのタイムラインを取得（自分 + フォロー中のユーザーのツイート）
     async fn timeline(&self, ctx: &Context<'_>) -> Result<Vec<TweetType>> {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // ユーザーのツイートを取得
-        let tweets: Vec<Tweet> =
-            sqlx::query_as("SELECT * FROM tweets WHERE user_id = ? ORDER BY created_at DESC")
-                .bind(user_id)
-                .fetch_all(db)
-                .await?;
+        // 自分とフォロー中のユーザーのツイートを取得
+        let tweets: Vec<Tweet> = sqlx::query_as(
+            r#"
+            SELECT t.* FROM tweets t
+            WHERE t.user_id = ?
+               OR t.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?)
+            ORDER BY t.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .bind(user_id)
+        .fetch_all(db)
+        .await?;
 
         if tweets.is_empty() {
             return Ok(Vec::new());
@@ -173,6 +180,186 @@ impl QueryRoot {
 
         Ok(comments.into_iter().map(CommentType::from).collect())
     }
+
+    /// ユーザー情報を取得（IDで検索）
+    async fn user(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<UserType>> {
+        let db = ctx.data::<Db>()?;
+        let current_user_id = ctx.data::<Uuid>().ok();
+
+        let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
+
+        if let Some(user) = user {
+            // フォロワー数を取得
+            let (followers_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE following_id = ?")
+                    .bind(id)
+                    .fetch_one(db)
+                    .await?;
+
+            // フォロー中の数を取得
+            let (following_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE follower_id = ?")
+                    .bind(id)
+                    .fetch_one(db)
+                    .await?;
+
+            // 現在のユーザーがこのユーザーをフォローしているか
+            let is_following = if let Some(current_id) = current_user_id {
+                if *current_id == id {
+                    false // 自分自身の場合はフォロー不可
+                } else {
+                    let exists: Option<(i32,)> = sqlx::query_as(
+                        "SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?",
+                    )
+                    .bind(current_id)
+                    .bind(id)
+                    .fetch_optional(db)
+                    .await?;
+                    exists.is_some()
+                }
+            } else {
+                false
+            };
+
+            Ok(Some(UserType {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                followers_count,
+                following_count,
+                is_following,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// ユーザーのフォロワー一覧を取得
+    async fn followers(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<Vec<UserType>> {
+        let db = ctx.data::<Db>()?;
+        let current_user_id = ctx.data::<Uuid>().ok();
+
+        // フォロワーのユーザー情報を取得
+        let followers: Vec<User> = sqlx::query_as(
+            r#"
+            SELECT u.* FROM users u
+            JOIN follows f ON u.id = f.follower_id
+            WHERE f.following_id = ?
+            ORDER BY f.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(db)
+        .await?;
+
+        let mut result = Vec::new();
+        for follower in followers {
+            let (followers_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE following_id = ?")
+                    .bind(follower.id)
+                    .fetch_one(db)
+                    .await?;
+
+            let (following_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE follower_id = ?")
+                    .bind(follower.id)
+                    .fetch_one(db)
+                    .await?;
+
+            let is_following = if let Some(current_id) = current_user_id {
+                if *current_id == follower.id {
+                    false
+                } else {
+                    let exists: Option<(i32,)> = sqlx::query_as(
+                        "SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?",
+                    )
+                    .bind(current_id)
+                    .bind(follower.id)
+                    .fetch_optional(db)
+                    .await?;
+                    exists.is_some()
+                }
+            } else {
+                false
+            };
+
+            result.push(UserType {
+                id: follower.id,
+                username: follower.username,
+                email: follower.email,
+                followers_count,
+                following_count,
+                is_following,
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// ユーザーがフォローしているユーザー一覧を取得
+    async fn following(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<Vec<UserType>> {
+        let db = ctx.data::<Db>()?;
+        let current_user_id = ctx.data::<Uuid>().ok();
+
+        // フォロー中のユーザー情報を取得
+        let following: Vec<User> = sqlx::query_as(
+            r#"
+            SELECT u.* FROM users u
+            JOIN follows f ON u.id = f.following_id
+            WHERE f.follower_id = ?
+            ORDER BY f.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(db)
+        .await?;
+
+        let mut result = Vec::new();
+        for user in following {
+            let (followers_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE following_id = ?")
+                    .bind(user.id)
+                    .fetch_one(db)
+                    .await?;
+
+            let (following_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE follower_id = ?")
+                    .bind(user.id)
+                    .fetch_one(db)
+                    .await?;
+
+            let is_following = if let Some(current_id) = current_user_id {
+                if *current_id == user.id {
+                    false
+                } else {
+                    let exists: Option<(i32,)> = sqlx::query_as(
+                        "SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?",
+                    )
+                    .bind(current_id)
+                    .bind(user.id)
+                    .fetch_optional(db)
+                    .await?;
+                    exists.is_some()
+                }
+            } else {
+                false
+            };
+
+            result.push(UserType {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                followers_count,
+                following_count,
+                is_following,
+            });
+        }
+
+        Ok(result)
+    }
 }
 
 /// GraphQL用のユーザー型
@@ -181,6 +368,9 @@ pub struct UserType {
     pub id: Uuid,
     pub username: String,
     pub email: String,
+    pub followers_count: i64,
+    pub following_count: i64,
+    pub is_following: bool,
 }
 
 #[Object]
@@ -196,15 +386,30 @@ impl UserType {
     async fn email(&self) -> &str {
         &self.email
     }
+
+    async fn followers_count(&self) -> i64 {
+        self.followers_count
+    }
+
+    async fn following_count(&self) -> i64 {
+        self.following_count
+    }
+
+    async fn is_following(&self) -> bool {
+        self.is_following
+    }
 }
 
-// UserからUserTypeへの変換（Uuid::parse_str不要）
+// UserからUserTypeへの変換（認証レスポンス用のシンプルな変換）
 impl From<User> for UserType {
     fn from(user: User) -> Self {
         Self {
             id: user.id,
             username: user.username,
             email: user.email,
+            followers_count: 0,
+            following_count: 0,
+            is_following: false,
         }
     }
 }
@@ -249,6 +454,18 @@ impl TweetType {
 
     async fn hashtags(&self) -> &[String] {
         &self.hashtags
+    }
+
+    /// ツイート投稿者の情報を取得
+    async fn user(&self, ctx: &Context<'_>) -> Result<Option<UserType>> {
+        let db = ctx.data::<Db>()?;
+
+        let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+            .bind(self.user_id)
+            .fetch_optional(db)
+            .await?;
+
+        Ok(user.map(UserType::from))
     }
 }
 

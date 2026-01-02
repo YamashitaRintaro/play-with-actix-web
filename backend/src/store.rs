@@ -145,5 +145,29 @@ pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
         .execute(&pool)
         .await?;
 
+    // フォローテーブルの作成
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS follows (
+            follower_id TEXT NOT NULL,
+            following_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (follower_id, following_id),
+            FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_follows_follower_id ON follows(follower_id)")
+        .execute(&pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_follows_following_id ON follows(following_id)")
+        .execute(&pool)
+        .await?;
+
     Ok(pool)
 }
