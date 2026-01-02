@@ -1797,6 +1797,7 @@ dependencies = [
  "bcrypt",
  "chrono",
  "jsonwebtoken",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

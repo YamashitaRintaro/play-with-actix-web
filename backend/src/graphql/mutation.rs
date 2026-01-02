@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::graphql::query::{TweetType, UserType};
 use crate::models::User;
 use crate::store::Db;
-use crate::utils::{create_jwt, hash_password, verify_password};
+use crate::utils::{create_jwt, extract_hashtags, hash_password, verify_password};
 
 pub struct MutationRoot;
 
@@ -92,6 +92,7 @@ impl MutationRoot {
         let tweet_id = Uuid::new_v4();
         let created_at = Utc::now().to_rfc3339();
 
+        // ツイートを保存
         sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
             .bind(tweet_id)
             .bind(user_id)
@@ -100,6 +101,32 @@ impl MutationRoot {
             .execute(db)
             .await?;
 
+        // ハッシュタグを抽出して保存
+        let hashtag_names = extract_hashtags(&content);
+        for tag_name in &hashtag_names {
+            // ハッシュタグを挿入（既存なら無視）
+            let hashtag_id = Uuid::new_v4();
+            sqlx::query("INSERT OR IGNORE INTO hashtags (id, name) VALUES (?, ?)")
+                .bind(hashtag_id)
+                .bind(tag_name)
+                .execute(db)
+                .await?;
+
+            // ハッシュタグIDを取得
+            let (actual_hashtag_id,): (Uuid,) =
+                sqlx::query_as("SELECT id FROM hashtags WHERE name = ?")
+                    .bind(tag_name)
+                    .fetch_one(db)
+                    .await?;
+
+            // ツイートとハッシュタグを紐付け
+            sqlx::query("INSERT INTO tweet_hashtags (tweet_id, hashtag_id) VALUES (?, ?)")
+                .bind(tweet_id)
+                .bind(actual_hashtag_id)
+                .execute(db)
+                .await?;
+        }
+
         Ok(TweetType {
             id: tweet_id,
             user_id: *user_id,
@@ -107,6 +134,7 @@ impl MutationRoot {
             created_at,
             like_count: 0,
             is_liked: false,
+            hashtags: hashtag_names,
         })
     }
 

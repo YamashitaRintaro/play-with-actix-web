@@ -29,3 +29,5 @@ actix-cors = "0.7"
 # GraphQL: async-graphqlとActix Web統合（uuid, chronoのサポートを有効化）
 async-graphql = { version = "7", features = ["uuid", "chrono"] }
 async-graphql-actix-web = "7"
+# 正規表現: パターンマッチング、ハッシュタグ抽出など
+regex = "1"
