@@ -23,17 +23,9 @@ type UserInfo = Pick<
   "id" | "username" | "followersCount" | "followingCount" | "isFollowing"
 >;
 
-const TABS: { key: Tab; label: string; emptyMessage: string }[] = [
-  {
-    key: "following",
-    label: "フォロー中",
-    emptyMessage: "まだ誰もフォローしていません",
-  },
-  {
-    key: "followers",
-    label: "フォロワー",
-    emptyMessage: "まだフォロワーがいません",
-  },
+const TABS: { key: Tab; label: string }[] = [
+  { key: "following", label: "フォロー中" },
+  { key: "followers", label: "フォロワー" },
 ];
 
 export function ProfileView({ userId, currentUserId }: Props) {
@@ -55,16 +47,6 @@ function ProfileViewContent({ userId, currentUserId }: Props) {
     { data: userData, fetching: userLoading, error: userError },
     refetchUser,
   ] = useUserQuery({ variables: { id: userId } });
-  const [{ data: followersData, fetching: followersLoading }] =
-    useFollowersQuery({
-      variables: { userId },
-      pause: activeTab !== "followers",
-    });
-  const [{ data: followingData, fetching: followingLoading }] =
-    useFollowingQuery({
-      variables: { userId },
-      pause: activeTab !== "following",
-    });
 
   const user = userData?.user;
   const isOwnProfile = userId === currentUserId;
@@ -85,19 +67,6 @@ function ProfileViewContent({ userId, currentUserId }: Props) {
     );
   }
 
-  const tabData = {
-    followers: {
-      users: followersData?.followers ?? [],
-      loading: followersLoading,
-    },
-    following: {
-      users: followingData?.following ?? [],
-      loading: followingLoading,
-    },
-  } satisfies Record<Tab, { users: UserType[]; loading: boolean }>;
-  const { users, loading } = tabData[activeTab];
-  const currentTab = TABS.find((t) => t.key === activeTab)!;
-
   return (
     <>
       <ProfileCard user={user}>
@@ -112,18 +81,94 @@ function ProfileViewContent({ userId, currentUserId }: Props) {
 
       <Card className="overflow-hidden">
         <TabList tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
-        <TabPanel loading={loading} emptyMessage={currentTab.emptyMessage}>
-          {users.map((user) => (
-            <UserListItem
-              key={user.id}
-              user={user}
-              currentUserId={currentUserId}
-              onFollowChange={handleRefetch}
-            />
-          ))}
-        </TabPanel>
+        {activeTab === "followers" && (
+          <FollowersTab
+            userId={userId}
+            currentUserId={currentUserId}
+            onFollowChange={handleRefetch}
+          />
+        )}
+        {activeTab === "following" && (
+          <FollowingTab
+            userId={userId}
+            currentUserId={currentUserId}
+            onFollowChange={handleRefetch}
+          />
+        )}
       </Card>
     </>
+  );
+}
+
+interface TabContentProps {
+  userId: string;
+  currentUserId: string;
+  onFollowChange: () => void;
+}
+
+function FollowersTab({
+  userId,
+  currentUserId,
+  onFollowChange,
+}: TabContentProps) {
+  const [{ data, fetching }] = useFollowersQuery({ variables: { userId } });
+
+  if (fetching) {
+    return <p className="p-6 text-center text-muted">読み込み中...</p>;
+  }
+
+  const followers = data?.followers ?? [];
+
+  if (followers.length === 0) {
+    return (
+      <p className="p-6 text-center text-muted">まだフォロワーがいません</p>
+    );
+  }
+
+  return (
+    <div role="tabpanel" className="divide-y divide-border">
+      {followers.map((user) => (
+        <UserListItem
+          key={user.id}
+          user={user}
+          currentUserId={currentUserId}
+          onFollowChange={onFollowChange}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FollowingTab({
+  userId,
+  currentUserId,
+  onFollowChange,
+}: TabContentProps) {
+  const [{ data, fetching }] = useFollowingQuery({ variables: { userId } });
+
+  if (fetching) {
+    return <p className="p-6 text-center text-muted">読み込み中...</p>;
+  }
+
+  const following = data?.following ?? [];
+
+  if (following.length === 0) {
+    return (
+      <p className="p-6 text-center text-muted">まだ誰もフォローしていません</p>
+    );
+  }
+
+  return (
+    <div role="tabpanel" className="divide-y divide-border">
+      {following.map((user) => (
+        <UserListItem
+          key={user.id}
+          user={user}
+          currentUserId={currentUserId}
+          onFollowChange={onFollowChange}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -217,33 +262,6 @@ function TabList({
           {tab.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-function TabPanel({
-  loading,
-  emptyMessage,
-  children,
-}: {
-  loading: boolean;
-  emptyMessage: string;
-  children: ReactNode;
-}) {
-  if (loading) {
-    return <p className="p-6 text-center text-muted">読み込み中...</p>;
-  }
-
-  const isEmpty =
-    !children || (Array.isArray(children) && children.length === 0);
-
-  return (
-    <div role="tabpanel" className="divide-y divide-border">
-      {isEmpty ? (
-        <p className="p-6 text-center text-muted">{emptyMessage}</p>
-      ) : (
-        children
-      )}
     </div>
   );
 }
