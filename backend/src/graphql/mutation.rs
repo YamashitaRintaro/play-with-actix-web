@@ -84,15 +84,12 @@ impl MutationRoot {
         let user_id = ctx.data::<Uuid>()?;
 
         if content.is_empty() || content.len() > 280 {
-            return Err(async_graphql::Error::new(
-                "Tweet content must be between 1 and 280 characters",
-            ));
+            return Err("Tweet content must be between 1 and 280 characters".into());
         }
 
         let tweet_id = Uuid::new_v4();
         let created_at = Utc::now().to_rfc3339();
 
-        // ツイートを保存
         sqlx::query("INSERT INTO tweets (id, user_id, content, created_at) VALUES (?, ?, ?, ?)")
             .bind(tweet_id)
             .bind(user_id)
@@ -101,28 +98,22 @@ impl MutationRoot {
             .execute(db)
             .await?;
 
-        // ハッシュタグを抽出して保存
         let hashtag_names = extract_hashtags(&content);
         for tag_name in &hashtag_names {
-            // ハッシュタグを挿入（既存なら無視）
-            let hashtag_id = Uuid::new_v4();
             sqlx::query("INSERT OR IGNORE INTO hashtags (id, name) VALUES (?, ?)")
-                .bind(hashtag_id)
+                .bind(Uuid::new_v4())
                 .bind(tag_name)
                 .execute(db)
                 .await?;
 
-            // ハッシュタグIDを取得
-            let (actual_hashtag_id,): (Uuid,) =
-                sqlx::query_as("SELECT id FROM hashtags WHERE name = ?")
-                    .bind(tag_name)
-                    .fetch_one(db)
-                    .await?;
+            let (hashtag_id,): (Uuid,) = sqlx::query_as("SELECT id FROM hashtags WHERE name = ?")
+                .bind(tag_name)
+                .fetch_one(db)
+                .await?;
 
-            // ツイートとハッシュタグを紐付け
             sqlx::query("INSERT INTO tweet_hashtags (tweet_id, hashtag_id) VALUES (?, ?)")
                 .bind(tweet_id)
-                .bind(actual_hashtag_id)
+                .bind(hashtag_id)
                 .execute(db)
                 .await?;
         }
@@ -149,9 +140,7 @@ impl MutationRoot {
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(async_graphql::Error::new(
-                "Tweet not found or not authorized",
-            ));
+            return Err("Tweet not found or not authorized".into());
         }
 
         Ok(true)
@@ -161,36 +150,24 @@ impl MutationRoot {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
 
-        // 既にいいね済みかチェック
-        let already_liked: Option<(i32,)> =
-            sqlx::query_as("SELECT 1 FROM likes WHERE tweet_id = ? AND user_id = ?")
-                .bind(tweet_id)
-                .bind(user_id)
-                .fetch_optional(db)
-                .await?;
-
-        if already_liked.is_some() {
-            return Err(async_graphql::Error::new("Already liked"));
-        }
-
-        // ツイートが存在するか確認
-        let tweet_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM tweets WHERE id = ?")
+        sqlx::query_as::<_, (i32,)>("SELECT 1 FROM tweets WHERE id = ?")
             .bind(tweet_id)
             .fetch_optional(db)
-            .await?;
+            .await?
+            .ok_or("Tweet not found")?;
 
-        if tweet_exists.is_none() {
-            return Err(async_graphql::Error::new("Tweet not found"));
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO likes (user_id, tweet_id, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(user_id)
+        .bind(tweet_id)
+        .bind(Utc::now().to_rfc3339())
+        .execute(db)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err("Already liked".into());
         }
-
-        // いいねを作成
-        let created_at = Utc::now().to_rfc3339();
-        sqlx::query("INSERT INTO likes (user_id, tweet_id, created_at) VALUES (?, ?, ?)")
-            .bind(user_id)
-            .bind(tweet_id)
-            .bind(&created_at)
-            .execute(db)
-            .await?;
 
         Ok(true)
     }
@@ -206,13 +183,12 @@ impl MutationRoot {
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(async_graphql::Error::new("Like not found"));
+            return Err("Like not found".into());
         }
 
         Ok(true)
     }
 
-    /// コメントを作成
     async fn create_comment(
         &self,
         ctx: &Context<'_>,
@@ -223,20 +199,14 @@ impl MutationRoot {
         let user_id = ctx.data::<Uuid>()?;
 
         if content.is_empty() || content.len() > 280 {
-            return Err(async_graphql::Error::new(
-                "Comment content must be between 1 and 280 characters",
-            ));
+            return Err("Comment content must be between 1 and 280 characters".into());
         }
 
-        // ツイートが存在するか確認
-        let tweet_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM tweets WHERE id = ?")
+        sqlx::query_as::<_, (i32,)>("SELECT 1 FROM tweets WHERE id = ?")
             .bind(tweet_id)
             .fetch_optional(db)
-            .await?;
-
-        if tweet_exists.is_none() {
-            return Err(async_graphql::Error::new("Tweet not found"));
-        }
+            .await?
+            .ok_or("Tweet not found")?;
 
         let comment_id = Uuid::new_v4();
         let created_at = Utc::now().to_rfc3339();
@@ -261,7 +231,6 @@ impl MutationRoot {
         })
     }
 
-    /// コメントを削除（投稿者のみ）
     async fn delete_comment(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         let db = ctx.data::<Db>()?;
         let user_id = ctx.data::<Uuid>()?;
@@ -273,9 +242,7 @@ impl MutationRoot {
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(async_graphql::Error::new(
-                "Comment not found or not authorized",
-            ));
+            return Err("Comment not found or not authorized".into());
         }
 
         Ok(true)
@@ -289,14 +256,11 @@ impl MutationRoot {
             return Err("Cannot follow yourself".into());
         }
 
-        let user_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE id = ?")
+        sqlx::query_as::<_, (i32,)>("SELECT 1 FROM users WHERE id = ?")
             .bind(target_id)
             .fetch_optional(db)
-            .await?;
-
-        if user_exists.is_none() {
-            return Err("User not found".into());
-        }
+            .await?
+            .ok_or("User not found")?;
 
         let result = sqlx::query(
             "INSERT OR IGNORE INTO follows (follower_id, following_id, created_at) VALUES (?, ?, ?)",
