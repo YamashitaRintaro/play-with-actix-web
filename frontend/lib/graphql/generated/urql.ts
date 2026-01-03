@@ -42,36 +42,14 @@ export type LoginInput = {
 
 export type MutationRoot = {
   __typename?: 'MutationRoot';
-  /** コメントを作成 */
   createComment: CommentType;
   createTweet: TweetType;
-  /** コメントを削除（投稿者のみ） */
   deleteComment: Scalars['Boolean']['output'];
   deleteTweet: Scalars['Boolean']['output'];
-  /**
-   * ユーザーをフォローする
-   *
-   * # Returns
-   * フォロー対象のユーザーID
-   *
-   * # Errors
-   * - 自分自身をフォローしようとした場合
-   * - フォロー対象のユーザーが存在しない場合
-   * - 既にフォロー済みの場合
-   */
   followUser: Scalars['UUID']['output'];
   likeTweet: Scalars['Boolean']['output'];
   login: AuthPayload;
   register: AuthPayload;
-  /**
-   * ユーザーのフォローを解除する
-   *
-   * # Returns
-   * フォロー解除対象のユーザーID
-   *
-   * # Errors
-   * - フォローしていないユーザーを解除しようとした場合
-   */
   unfollowUser: Scalars['UUID']['output'];
   unlikeTweet: Scalars['Boolean']['output'];
 };
