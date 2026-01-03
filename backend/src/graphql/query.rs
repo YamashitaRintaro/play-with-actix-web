@@ -236,12 +236,10 @@ impl QueryRoot {
         }
     }
 
-    /// ユーザーのフォロワー一覧を取得
     async fn followers(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<Vec<UserType>> {
         let db = ctx.data::<Db>()?;
         let current_user_id = ctx.data::<Uuid>().ok();
 
-        // フォロワーのユーザー情報を取得
         let followers: Vec<User> = sqlx::query_as(
             r#"
             SELECT u.* FROM users u
@@ -298,12 +296,10 @@ impl QueryRoot {
         Ok(result)
     }
 
-    /// ユーザーがフォローしているユーザー一覧を取得
     async fn following(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<Vec<UserType>> {
         let db = ctx.data::<Db>()?;
         let current_user_id = ctx.data::<Uuid>().ok();
 
-        // フォロー中のユーザー情報を取得
         let following: Vec<User> = sqlx::query_as(
             r#"
             SELECT u.* FROM users u
@@ -361,7 +357,6 @@ impl QueryRoot {
     }
 }
 
-/// GraphQL用のユーザー型
 #[derive(Clone)]
 pub struct UserType {
     pub id: Uuid,
@@ -399,7 +394,6 @@ impl UserType {
     }
 }
 
-// UserからUserTypeへの変換（認証レスポンス用のシンプルな変換）
 impl From<User> for UserType {
     fn from(user: User) -> Self {
         Self {
@@ -413,7 +407,6 @@ impl From<User> for UserType {
     }
 }
 
-/// GraphQL用のツイート型
 #[derive(Clone)]
 pub struct TweetType {
     pub id: Uuid,
@@ -455,7 +448,6 @@ impl TweetType {
         &self.hashtags
     }
 
-    /// ツイート投稿者の情報を取得
     async fn user(&self, ctx: &Context<'_>) -> Result<Option<UserType>> {
         let db = ctx.data::<Db>()?;
 
@@ -493,7 +485,6 @@ impl From<Tweet> for TweetType {
     }
 }
 
-/// GraphQL用のコメント型
 #[derive(Clone)]
 pub struct CommentType {
     pub id: Uuid,
@@ -525,7 +516,6 @@ impl CommentType {
         &self.created_at
     }
 
-    /// コメント投稿者の情報を取得
     async fn user(&self, ctx: &Context<'_>) -> Result<Option<UserType>> {
         let db = ctx.data::<Db>()?;
         let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
