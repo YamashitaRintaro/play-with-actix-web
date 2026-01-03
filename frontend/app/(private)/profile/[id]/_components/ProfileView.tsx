@@ -102,7 +102,11 @@ function ProfileViewContent({ userId, currentUserId }: Props) {
     <>
       <ProfileCard user={user}>
         {!isOwnProfile && (
-          <FollowAction userId={userId} user={user} onSuccess={handleRefetch} />
+          <FollowAction
+            targetId={userId}
+            user={user}
+            onSuccess={handleRefetch}
+          />
         )}
       </ProfileCard>
 
@@ -285,12 +289,12 @@ function FollowButton({
 }
 
 function FollowAction({
-  userId,
+  targetId,
   user,
   onSuccess,
   size = "default",
 }: {
-  userId: string;
+  targetId: string;
   user: UserInfo;
   onSuccess: () => void;
   size?: Size;
@@ -303,13 +307,13 @@ function FollowAction({
 
   const handleToggle = useCallback(async () => {
     const result = user.isFollowing
-      ? await unfollowUser({ userId })
-      : await followUser({ userId });
+      ? await unfollowUser({ targetId })
+      : await followUser({ targetId });
 
     if (!result.error) {
       onSuccess();
     }
-  }, [userId, user.isFollowing, followUser, unfollowUser, onSuccess]);
+  }, [targetId, user.isFollowing, followUser, unfollowUser, onSuccess]);
 
   return (
     <FollowButton
@@ -344,7 +348,7 @@ function UserListItem({
       </Link>
       {!isOwnProfile && (
         <FollowAction
-          userId={user.id}
+          targetId={user.id}
           user={user}
           onSuccess={onFollowChange}
           size="small"

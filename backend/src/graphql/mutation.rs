@@ -281,63 +281,54 @@ impl MutationRoot {
         Ok(true)
     }
 
-    async fn follow_user(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<bool> {
+    async fn follow_user(&self, ctx: &Context<'_>, target_id: Uuid) -> Result<Uuid> {
         let db = ctx.data::<Db>()?;
-        let follower_id = ctx.data::<Uuid>()?;
+        let current_user_id = ctx.data::<Uuid>()?;
 
-        // 自分自身をフォローしようとしている場合
-        if *follower_id == user_id {
-            return Err(async_graphql::Error::new("Cannot follow yourself"));
+        if *current_user_id == target_id {
+            return Err("Cannot follow yourself".into());
         }
 
-        // フォロー対象のユーザーが存在するか確認
         let user_exists: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE id = ?")
-            .bind(user_id)
+            .bind(target_id)
             .fetch_optional(db)
             .await?;
 
         if user_exists.is_none() {
-            return Err(async_graphql::Error::new("User not found"));
+            return Err("User not found".into());
         }
 
-        // 既にフォロー済みかチェック
-        let already_following: Option<(i32,)> =
-            sqlx::query_as("SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?")
-                .bind(follower_id)
-                .bind(user_id)
-                .fetch_optional(db)
-                .await?;
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO follows (follower_id, following_id, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(current_user_id)
+        .bind(target_id)
+        .bind(Utc::now().to_rfc3339())
+        .execute(db)
+        .await?;
 
-        if already_following.is_some() {
-            return Err(async_graphql::Error::new("Already following this user"));
+        if result.rows_affected() == 0 {
+            return Err("Already following this user".into());
         }
 
-        let created_at = Utc::now().to_rfc3339();
-        sqlx::query("INSERT INTO follows (follower_id, following_id, created_at) VALUES (?, ?, ?)")
-            .bind(follower_id)
-            .bind(user_id)
-            .bind(&created_at)
-            .execute(db)
-            .await?;
-
-        Ok(true)
+        Ok(target_id)
     }
 
-    async fn unfollow_user(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<bool> {
+    async fn unfollow_user(&self, ctx: &Context<'_>, target_id: Uuid) -> Result<Uuid> {
         let db = ctx.data::<Db>()?;
-        let follower_id = ctx.data::<Uuid>()?;
+        let current_user_id = ctx.data::<Uuid>()?;
 
         let result = sqlx::query("DELETE FROM follows WHERE follower_id = ? AND following_id = ?")
-            .bind(follower_id)
-            .bind(user_id)
+            .bind(current_user_id)
+            .bind(target_id)
             .execute(db)
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(async_graphql::Error::new("Not following this user"));
+            return Err("Not following this user".into());
         }
 
-        Ok(true)
+        Ok(target_id)
     }
 }
 

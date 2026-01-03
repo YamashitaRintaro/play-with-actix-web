@@ -30,7 +30,6 @@ export type CommentType = {
   createdAt: Scalars['String']['output'];
   id: Scalars['UUID']['output'];
   tweetId: Scalars['UUID']['output'];
-  /** コメント投稿者の情報を取得 */
   user?: Maybe<UserType>;
   userId: Scalars['UUID']['output'];
 };
@@ -49,13 +48,31 @@ export type MutationRoot = {
   /** コメントを削除（投稿者のみ） */
   deleteComment: Scalars['Boolean']['output'];
   deleteTweet: Scalars['Boolean']['output'];
-  /** ユーザーをフォロー */
-  followUser: Scalars['Boolean']['output'];
+  /**
+   * ユーザーをフォローする
+   *
+   * # Returns
+   * フォロー対象のユーザーID
+   *
+   * # Errors
+   * - 自分自身をフォローしようとした場合
+   * - フォロー対象のユーザーが存在しない場合
+   * - 既にフォロー済みの場合
+   */
+  followUser: Scalars['UUID']['output'];
   likeTweet: Scalars['Boolean']['output'];
   login: AuthPayload;
   register: AuthPayload;
-  /** ユーザーのフォローを解除 */
-  unfollowUser: Scalars['Boolean']['output'];
+  /**
+   * ユーザーのフォローを解除する
+   *
+   * # Returns
+   * フォロー解除対象のユーザーID
+   *
+   * # Errors
+   * - フォローしていないユーザーを解除しようとした場合
+   */
+  unfollowUser: Scalars['UUID']['output'];
   unlikeTweet: Scalars['Boolean']['output'];
 };
 
@@ -82,7 +99,7 @@ export type MutationRootDeleteTweetArgs = {
 
 
 export type MutationRootFollowUserArgs = {
-  userId: Scalars['UUID']['input'];
+  targetId: Scalars['UUID']['input'];
 };
 
 
@@ -102,7 +119,7 @@ export type MutationRootRegisterArgs = {
 
 
 export type MutationRootUnfollowUserArgs = {
-  userId: Scalars['UUID']['input'];
+  targetId: Scalars['UUID']['input'];
 };
 
 
@@ -114,16 +131,13 @@ export type QueryRoot = {
   __typename?: 'QueryRoot';
   /** ツイートへのコメント一覧を取得 */
   comments: Array<CommentType>;
-  /** ユーザーのフォロワー一覧を取得 */
   followers: Array<UserType>;
-  /** ユーザーがフォローしているユーザー一覧を取得 */
   following: Array<UserType>;
   /** 現在のユーザー情報を取得 */
   me?: Maybe<UserType>;
   /** 現在のユーザーのタイムラインを取得（自分 + フォロー中のユーザーのツイート） */
   timeline: Array<TweetType>;
   tweet?: Maybe<TweetType>;
-  /** ユーザー情報を取得（IDで検索） */
   user?: Maybe<UserType>;
 };
 
@@ -167,7 +181,6 @@ export type TweetType = {
   id: Scalars['UUID']['output'];
   isLiked: Scalars['Boolean']['output'];
   likeCount: Scalars['Int']['output'];
-  /** ツイート投稿者の情報を取得 */
   user?: Maybe<UserType>;
   userId: Scalars['UUID']['output'];
 };
@@ -246,18 +259,18 @@ export type DeleteCommentMutationVariables = Exact<{
 export type DeleteCommentMutation = { __typename?: 'MutationRoot', deleteComment: boolean };
 
 export type FollowUserMutationVariables = Exact<{
-  userId: Scalars['UUID']['input'];
+  targetId: Scalars['UUID']['input'];
 }>;
 
 
-export type FollowUserMutation = { __typename?: 'MutationRoot', followUser: boolean };
+export type FollowUserMutation = { __typename?: 'MutationRoot', followUser: string };
 
 export type UnfollowUserMutationVariables = Exact<{
-  userId: Scalars['UUID']['input'];
+  targetId: Scalars['UUID']['input'];
 }>;
 
 
-export type UnfollowUserMutation = { __typename?: 'MutationRoot', unfollowUser: boolean };
+export type UnfollowUserMutation = { __typename?: 'MutationRoot', unfollowUser: string };
 
 export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -429,8 +442,8 @@ export function useDeleteCommentMutation() {
   return Urql.useMutation<DeleteCommentMutation, DeleteCommentMutationVariables>(DeleteCommentDocument);
 };
 export const FollowUserDocument = gql`
-    mutation FollowUser($userId: UUID!) {
-  followUser(userId: $userId)
+    mutation FollowUser($targetId: UUID!) {
+  followUser(targetId: $targetId)
 }
     `;
 
@@ -438,8 +451,8 @@ export function useFollowUserMutation() {
   return Urql.useMutation<FollowUserMutation, FollowUserMutationVariables>(FollowUserDocument);
 };
 export const UnfollowUserDocument = gql`
-    mutation UnfollowUser($userId: UUID!) {
-  unfollowUser(userId: $userId)
+    mutation UnfollowUser($targetId: UUID!) {
+  unfollowUser(targetId: $targetId)
 }
     `;
 

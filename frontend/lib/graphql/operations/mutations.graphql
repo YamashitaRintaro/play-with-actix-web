@@ -46,10 +46,10 @@ mutation DeleteComment($id: UUID!) {
   deleteComment(id: $id)
 }
 
-mutation FollowUser($userId: UUID!) {
-  followUser(userId: $userId)
+mutation FollowUser($targetId: UUID!) {
+  followUser(targetId: $targetId)
 }
 
-mutation UnfollowUser($userId: UUID!) {
-  unfollowUser(userId: $userId)
+mutation UnfollowUser($targetId: UUID!) {
+  unfollowUser(targetId: $targetId)
 }
