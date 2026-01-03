@@ -1,13 +1,6 @@
 /**
  * Data Access Layer (DAL)
- *
  * Server Components 用のデータアクセス関数。
- * React の cache() により、同一リクエスト内での重複呼び出しがメモ化され、
- * JWT復号が1回のみになります。
- *
- * 使用例:
- *   Layout: const session = await getSession();
- *   Page:   const user = await getCurrentUser(); // キャッシュヒット
  */
 import "server-only";
 

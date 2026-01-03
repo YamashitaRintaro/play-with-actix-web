@@ -23,3 +23,21 @@ query Comments($tweetId: UUID!) {
     ...CommentFields
   }
 }
+
+query User($id: UUID!) {
+  user(id: $id) {
+    ...UserFields
+  }
+}
+
+query Followers($userId: UUID!) {
+  followers(userId: $userId) {
+    ...UserFields
+  }
+}
+
+query Following($userId: UUID!) {
+  following(userId: $userId) {
+    ...UserFields
+  }
+}

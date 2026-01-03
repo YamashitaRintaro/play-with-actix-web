@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getSession } from "@/lib/dal";
 import { GraphQLProvider } from "@/lib/graphql/provider";
 import { logout } from "@/app/actions/auth";
@@ -19,11 +20,19 @@ export default async function PrivateLayout({
       <div className="min-h-screen">
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm border-b border-border">
           <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-primary">
+            <Link
+              href="/"
+              className="text-2xl font-bold text-primary hover:opacity-80 transition-opacity"
+            >
               🐦 Twitter Clone
-            </h1>
+            </Link>
             <div className="flex items-center gap-4">
-              <span className="text-muted">@{session.user.username}</span>
+              <Link
+                href={`/profile/${session.user.id}`}
+                className="text-muted hover:text-primary transition-colors"
+              >
+                @{session.user.username}
+              </Link>
               <form action={logout}>
                 <button
                   type="submit"

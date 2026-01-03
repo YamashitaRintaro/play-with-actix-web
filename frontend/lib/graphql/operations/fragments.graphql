@@ -2,6 +2,9 @@ fragment UserFields on UserType {
   id
   username
   email
+  followersCount
+  followingCount
+  isFollowing
 }
 
 fragment TweetFields on TweetType {
@@ -12,6 +15,10 @@ fragment TweetFields on TweetType {
   likeCount
   isLiked
   hashtags
+  user {
+    id
+    username
+  }
 }
 
 fragment CommentFields on CommentType {

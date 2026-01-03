@@ -30,7 +30,6 @@ export type CommentType = {
   createdAt: Scalars['String']['output'];
   id: Scalars['UUID']['output'];
   tweetId: Scalars['UUID']['output'];
-  /** コメント投稿者の情報を取得 */
   user?: Maybe<UserType>;
   userId: Scalars['UUID']['output'];
 };
@@ -43,15 +42,15 @@ export type LoginInput = {
 
 export type MutationRoot = {
   __typename?: 'MutationRoot';
-  /** コメントを作成 */
   createComment: CommentType;
   createTweet: TweetType;
-  /** コメントを削除（投稿者のみ） */
   deleteComment: Scalars['Boolean']['output'];
   deleteTweet: Scalars['Boolean']['output'];
+  followUser: Scalars['UUID']['output'];
   likeTweet: Scalars['Boolean']['output'];
   login: AuthPayload;
   register: AuthPayload;
+  unfollowUser: Scalars['UUID']['output'];
   unlikeTweet: Scalars['Boolean']['output'];
 };
 
@@ -77,6 +76,11 @@ export type MutationRootDeleteTweetArgs = {
 };
 
 
+export type MutationRootFollowUserArgs = {
+  targetId: Scalars['UUID']['input'];
+};
+
+
 export type MutationRootLikeTweetArgs = {
   tweetId: Scalars['UUID']['input'];
 };
@@ -92,6 +96,11 @@ export type MutationRootRegisterArgs = {
 };
 
 
+export type MutationRootUnfollowUserArgs = {
+  targetId: Scalars['UUID']['input'];
+};
+
+
 export type MutationRootUnlikeTweetArgs = {
   tweetId: Scalars['UUID']['input'];
 };
@@ -100,11 +109,14 @@ export type QueryRoot = {
   __typename?: 'QueryRoot';
   /** ツイートへのコメント一覧を取得 */
   comments: Array<CommentType>;
+  followers: Array<UserType>;
+  following: Array<UserType>;
   /** 現在のユーザー情報を取得 */
   me?: Maybe<UserType>;
-  /** 現在のユーザーのタイムラインを取得 */
+  /** 現在のユーザーのタイムラインを取得（自分 + フォロー中のユーザーのツイート） */
   timeline: Array<TweetType>;
   tweet?: Maybe<TweetType>;
+  user?: Maybe<UserType>;
 };
 
 
@@ -113,7 +125,22 @@ export type QueryRootCommentsArgs = {
 };
 
 
+export type QueryRootFollowersArgs = {
+  userId: Scalars['UUID']['input'];
+};
+
+
+export type QueryRootFollowingArgs = {
+  userId: Scalars['UUID']['input'];
+};
+
+
 export type QueryRootTweetArgs = {
+  id: Scalars['UUID']['input'];
+};
+
+
+export type QueryRootUserArgs = {
   id: Scalars['UUID']['input'];
 };
 
@@ -132,19 +159,23 @@ export type TweetType = {
   id: Scalars['UUID']['output'];
   isLiked: Scalars['Boolean']['output'];
   likeCount: Scalars['Int']['output'];
+  user?: Maybe<UserType>;
   userId: Scalars['UUID']['output'];
 };
 
 export type UserType = {
   __typename?: 'UserType';
   email: Scalars['String']['output'];
+  followersCount: Scalars['Int']['output'];
+  followingCount: Scalars['Int']['output'];
   id: Scalars['UUID']['output'];
+  isFollowing: Scalars['Boolean']['output'];
   username: Scalars['String']['output'];
 };
 
-export type UserFieldsFragment = { __typename?: 'UserType', id: string, username: string, email: string };
+export type UserFieldsFragment = { __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean };
 
-export type TweetFieldsFragment = { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> };
+export type TweetFieldsFragment = { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string>, user?: { __typename?: 'UserType', id: string, username: string } | null };
 
 export type CommentFieldsFragment = { __typename?: 'CommentType', id: string, tweetId: string, userId: string, content: string, createdAt: string, user?: { __typename?: 'UserType', id: string, username: string } | null };
 
@@ -153,21 +184,21 @@ export type RegisterMutationVariables = Exact<{
 }>;
 
 
-export type RegisterMutation = { __typename?: 'MutationRoot', register: { __typename?: 'AuthPayload', token: string, user: { __typename?: 'UserType', id: string, username: string, email: string } } };
+export type RegisterMutation = { __typename?: 'MutationRoot', register: { __typename?: 'AuthPayload', token: string, user: { __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean } } };
 
 export type LoginMutationVariables = Exact<{
   input: LoginInput;
 }>;
 
 
-export type LoginMutation = { __typename?: 'MutationRoot', login: { __typename?: 'AuthPayload', token: string, user: { __typename?: 'UserType', id: string, username: string, email: string } } };
+export type LoginMutation = { __typename?: 'MutationRoot', login: { __typename?: 'AuthPayload', token: string, user: { __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean } } };
 
 export type CreateTweetMutationVariables = Exact<{
   content: Scalars['String']['input'];
 }>;
 
 
-export type CreateTweetMutation = { __typename?: 'MutationRoot', createTweet: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> } };
+export type CreateTweetMutation = { __typename?: 'MutationRoot', createTweet: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string>, user?: { __typename?: 'UserType', id: string, username: string } | null } };
 
 export type DeleteTweetMutationVariables = Exact<{
   id: Scalars['UUID']['input'];
@@ -205,22 +236,36 @@ export type DeleteCommentMutationVariables = Exact<{
 
 export type DeleteCommentMutation = { __typename?: 'MutationRoot', deleteComment: boolean };
 
+export type FollowUserMutationVariables = Exact<{
+  targetId: Scalars['UUID']['input'];
+}>;
+
+
+export type FollowUserMutation = { __typename?: 'MutationRoot', followUser: string };
+
+export type UnfollowUserMutationVariables = Exact<{
+  targetId: Scalars['UUID']['input'];
+}>;
+
+
+export type UnfollowUserMutation = { __typename?: 'MutationRoot', unfollowUser: string };
+
 export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MeQuery = { __typename?: 'QueryRoot', me?: { __typename?: 'UserType', id: string, username: string, email: string } | null };
+export type MeQuery = { __typename?: 'QueryRoot', me?: { __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean } | null };
 
 export type TimelineQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type TimelineQuery = { __typename?: 'QueryRoot', timeline: Array<{ __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> }> };
+export type TimelineQuery = { __typename?: 'QueryRoot', timeline: Array<{ __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string>, user?: { __typename?: 'UserType', id: string, username: string } | null }> };
 
 export type TweetQueryVariables = Exact<{
   id: Scalars['UUID']['input'];
 }>;
 
 
-export type TweetQuery = { __typename?: 'QueryRoot', tweet?: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string> } | null };
+export type TweetQuery = { __typename?: 'QueryRoot', tweet?: { __typename?: 'TweetType', id: string, userId: string, content: string, createdAt: string, likeCount: number, isLiked: boolean, hashtags: Array<string>, user?: { __typename?: 'UserType', id: string, username: string } | null } | null };
 
 export type CommentsQueryVariables = Exact<{
   tweetId: Scalars['UUID']['input'];
@@ -229,11 +274,35 @@ export type CommentsQueryVariables = Exact<{
 
 export type CommentsQuery = { __typename?: 'QueryRoot', comments: Array<{ __typename?: 'CommentType', id: string, tweetId: string, userId: string, content: string, createdAt: string, user?: { __typename?: 'UserType', id: string, username: string } | null }> };
 
+export type UserQueryVariables = Exact<{
+  id: Scalars['UUID']['input'];
+}>;
+
+
+export type UserQuery = { __typename?: 'QueryRoot', user?: { __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean } | null };
+
+export type FollowersQueryVariables = Exact<{
+  userId: Scalars['UUID']['input'];
+}>;
+
+
+export type FollowersQuery = { __typename?: 'QueryRoot', followers: Array<{ __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean }> };
+
+export type FollowingQueryVariables = Exact<{
+  userId: Scalars['UUID']['input'];
+}>;
+
+
+export type FollowingQuery = { __typename?: 'QueryRoot', following: Array<{ __typename?: 'UserType', id: string, username: string, email: string, followersCount: number, followingCount: number, isFollowing: boolean }> };
+
 export const UserFieldsFragmentDoc = gql`
     fragment UserFields on UserType {
   id
   username
   email
+  followersCount
+  followingCount
+  isFollowing
 }
     `;
 export const TweetFieldsFragmentDoc = gql`
@@ -245,6 +314,10 @@ export const TweetFieldsFragmentDoc = gql`
   likeCount
   isLiked
   hashtags
+  user {
+    id
+    username
+  }
 }
     `;
 export const CommentFieldsFragmentDoc = gql`
@@ -346,6 +419,24 @@ export const DeleteCommentDocument = gql`
 export function useDeleteCommentMutation() {
   return Urql.useMutation<DeleteCommentMutation, DeleteCommentMutationVariables>(DeleteCommentDocument);
 };
+export const FollowUserDocument = gql`
+    mutation FollowUser($targetId: UUID!) {
+  followUser(targetId: $targetId)
+}
+    `;
+
+export function useFollowUserMutation() {
+  return Urql.useMutation<FollowUserMutation, FollowUserMutationVariables>(FollowUserDocument);
+};
+export const UnfollowUserDocument = gql`
+    mutation UnfollowUser($targetId: UUID!) {
+  unfollowUser(targetId: $targetId)
+}
+    `;
+
+export function useUnfollowUserMutation() {
+  return Urql.useMutation<UnfollowUserMutation, UnfollowUserMutationVariables>(UnfollowUserDocument);
+};
 export const MeDocument = gql`
     query Me {
   me {
@@ -389,4 +480,37 @@ export const CommentsDocument = gql`
 
 export function useCommentsQuery(options: Omit<Urql.UseQueryArgs<CommentsQueryVariables>, 'query'>) {
   return Urql.useQuery<CommentsQuery, CommentsQueryVariables>({ query: CommentsDocument, ...options });
+};
+export const UserDocument = gql`
+    query User($id: UUID!) {
+  user(id: $id) {
+    ...UserFields
+  }
+}
+    ${UserFieldsFragmentDoc}`;
+
+export function useUserQuery(options: Omit<Urql.UseQueryArgs<UserQueryVariables>, 'query'>) {
+  return Urql.useQuery<UserQuery, UserQueryVariables>({ query: UserDocument, ...options });
+};
+export const FollowersDocument = gql`
+    query Followers($userId: UUID!) {
+  followers(userId: $userId) {
+    ...UserFields
+  }
+}
+    ${UserFieldsFragmentDoc}`;
+
+export function useFollowersQuery(options: Omit<Urql.UseQueryArgs<FollowersQueryVariables>, 'query'>) {
+  return Urql.useQuery<FollowersQuery, FollowersQueryVariables>({ query: FollowersDocument, ...options });
+};
+export const FollowingDocument = gql`
+    query Following($userId: UUID!) {
+  following(userId: $userId) {
+    ...UserFields
+  }
+}
+    ${UserFieldsFragmentDoc}`;
+
+export function useFollowingQuery(options: Omit<Urql.UseQueryArgs<FollowingQueryVariables>, 'query'>) {
+  return Urql.useQuery<FollowingQuery, FollowingQueryVariables>({ query: FollowingDocument, ...options });
 };

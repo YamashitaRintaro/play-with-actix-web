@@ -93,6 +93,19 @@ export function Timeline({ userId }: Props) {
                   key={tweet.id}
                   className="p-6 border-b border-border last:border-b-0 hover:bg-slate-50 transition-colors"
                 >
+                  <div className="flex items-center gap-2 mb-2">
+                    <a
+                      href={`/profile/${tweet.userId}`}
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      @{tweet.user?.username ?? "unknown"}
+                    </a>
+                    {tweet.userId === userId && (
+                      <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        あなた
+                      </span>
+                    )}
+                  </div>
                   <div className="flex justify-between items-start gap-4">
                     <p className="flex-1 whitespace-pre-wrap break-words">
                       {tweet.content}

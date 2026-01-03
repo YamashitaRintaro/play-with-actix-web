@@ -45,3 +45,11 @@ mutation CreateComment($tweetId: UUID!, $content: String!) {
 mutation DeleteComment($id: UUID!) {
   deleteComment(id: $id)
 }
+
+mutation FollowUser($targetId: UUID!) {
+  followUser(targetId: $targetId)
+}
+
+mutation UnfollowUser($targetId: UUID!) {
+  unfollowUser(targetId: $targetId)
+}
