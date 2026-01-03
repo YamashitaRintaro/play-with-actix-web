@@ -181,7 +181,6 @@ impl QueryRoot {
         Ok(comments.into_iter().map(CommentType::from).collect())
     }
 
-    /// ユーザー情報を取得（IDで検索）
     async fn user(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<UserType>> {
         let db = ctx.data::<Db>()?;
         let current_user_id = ctx.data::<Uuid>().ok();
