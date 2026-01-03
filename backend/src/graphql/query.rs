@@ -238,11 +238,15 @@ impl QueryRoot {
 
     async fn followers(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<Vec<UserType>> {
         let db = ctx.data::<Db>()?;
-        let current_user_id = ctx.data::<Uuid>().ok();
+        let current_user_id = ctx.data::<Uuid>()?;
 
-        let followers: Vec<User> = sqlx::query_as(
+        let rows: Vec<(Uuid, String, String, i64, i64)> = sqlx::query_as(
             r#"
-            SELECT u.* FROM users u
+            SELECT 
+                u.id, u.username, u.email,
+                (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as followers_count,
+                (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count
+            FROM users u
             JOIN follows f ON u.id = f.follower_id
             WHERE f.following_id = ?
             ORDER BY f.created_at DESC
@@ -252,57 +256,35 @@ impl QueryRoot {
         .fetch_all(db)
         .await?;
 
-        let mut result = Vec::new();
-        for follower in followers {
-            let (followers_count,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE following_id = ?")
-                    .bind(follower.id)
-                    .fetch_one(db)
-                    .await?;
+        let user_ids: Vec<Uuid> = rows.iter().map(|(id, ..)| *id).collect();
+        let following_set = fetch_following_set(db, *current_user_id, &user_ids).await?;
 
-            let (following_count,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE follower_id = ?")
-                    .bind(follower.id)
-                    .fetch_one(db)
-                    .await?;
-
-            let is_following = if let Some(current_id) = current_user_id {
-                if *current_id == follower.id {
-                    false
-                } else {
-                    let exists: Option<(i32,)> = sqlx::query_as(
-                        "SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?",
-                    )
-                    .bind(current_id)
-                    .bind(follower.id)
-                    .fetch_optional(db)
-                    .await?;
-                    exists.is_some()
-                }
-            } else {
-                false
-            };
-
-            result.push(UserType {
-                id: follower.id,
-                username: follower.username,
-                email: follower.email,
-                followers_count,
-                following_count,
-                is_following,
-            });
-        }
-
-        Ok(result)
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, username, email, followers_count, following_count)| UserType {
+                    id,
+                    username,
+                    email,
+                    followers_count,
+                    following_count,
+                    is_following: id != *current_user_id && following_set.contains(&id),
+                },
+            )
+            .collect())
     }
 
     async fn following(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<Vec<UserType>> {
         let db = ctx.data::<Db>()?;
-        let current_user_id = ctx.data::<Uuid>().ok();
+        let current_user_id = ctx.data::<Uuid>()?;
 
-        let following: Vec<User> = sqlx::query_as(
+        let rows: Vec<(Uuid, String, String, i64, i64)> = sqlx::query_as(
             r#"
-            SELECT u.* FROM users u
+            SELECT 
+                u.id, u.username, u.email,
+                (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as followers_count,
+                (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count
+            FROM users u
             JOIN follows f ON u.id = f.following_id
             WHERE f.follower_id = ?
             ORDER BY f.created_at DESC
@@ -312,49 +294,47 @@ impl QueryRoot {
         .fetch_all(db)
         .await?;
 
-        let mut result = Vec::new();
-        for user in following {
-            let (followers_count,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE following_id = ?")
-                    .bind(user.id)
-                    .fetch_one(db)
-                    .await?;
+        let user_ids: Vec<Uuid> = rows.iter().map(|(id, ..)| *id).collect();
+        let following_set = fetch_following_set(db, *current_user_id, &user_ids).await?;
 
-            let (following_count,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM follows WHERE follower_id = ?")
-                    .bind(user.id)
-                    .fetch_one(db)
-                    .await?;
-
-            let is_following = if let Some(current_id) = current_user_id {
-                if *current_id == user.id {
-                    false
-                } else {
-                    let exists: Option<(i32,)> = sqlx::query_as(
-                        "SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?",
-                    )
-                    .bind(current_id)
-                    .bind(user.id)
-                    .fetch_optional(db)
-                    .await?;
-                    exists.is_some()
-                }
-            } else {
-                false
-            };
-
-            result.push(UserType {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                followers_count,
-                following_count,
-                is_following,
-            });
-        }
-
-        Ok(result)
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, username, email, followers_count, following_count)| UserType {
+                    id,
+                    username,
+                    email,
+                    followers_count,
+                    following_count,
+                    is_following: id != *current_user_id && following_set.contains(&id),
+                },
+            )
+            .collect())
     }
+}
+
+async fn fetch_following_set(
+    db: &Db,
+    current_user_id: Uuid,
+    target_ids: &[Uuid],
+) -> Result<HashSet<Uuid>> {
+    if target_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let placeholders = target_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "SELECT following_id FROM follows WHERE follower_id = ? AND following_id IN ({})",
+        placeholders
+    );
+
+    let mut q = sqlx::query_as::<_, (Uuid,)>(&query).bind(current_user_id);
+    for id in target_ids {
+        q = q.bind(id);
+    }
+
+    let rows: Vec<(Uuid,)> = q.fetch_all(db).await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
 #[derive(Clone)]
@@ -450,7 +430,6 @@ impl TweetType {
 
     async fn user(&self, ctx: &Context<'_>) -> Result<Option<UserType>> {
         let db = ctx.data::<Db>()?;
-
         let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
             .bind(self.user_id)
             .fetch_optional(db)
