@@ -106,14 +106,25 @@ interface TabContentProps {
   onFollowChange: () => void;
 }
 
+const requestPolicy = "cache-and-network";
+const refetcnPoicy = "network-only";
+
 function FollowersTab({
   userId,
   currentUserId,
   onFollowChange,
 }: TabContentProps) {
-  const [{ data, fetching }] = useFollowersQuery({ variables: { userId } });
+  const [{ data, fetching }, refetch] = useFollowersQuery({
+    variables: { userId },
+    requestPolicy,
+  });
 
-  if (fetching) {
+  const handleFollowChange = useCallback(() => {
+    onFollowChange();
+    refetch({ requestPolicy: refetcnPoicy });
+  }, [onFollowChange, refetch]);
+
+  if (fetching && !data) {
     return <p className="p-6 text-center text-muted">読み込み中...</p>;
   }
 
@@ -132,7 +143,7 @@ function FollowersTab({
           key={user.id}
           user={user}
           currentUserId={currentUserId}
-          onFollowChange={onFollowChange}
+          onFollowChange={handleFollowChange}
         />
       ))}
     </div>
@@ -144,9 +155,17 @@ function FollowingTab({
   currentUserId,
   onFollowChange,
 }: TabContentProps) {
-  const [{ data, fetching }] = useFollowingQuery({ variables: { userId } });
+  const [{ data, fetching }, refetch] = useFollowingQuery({
+    variables: { userId },
+    requestPolicy,
+  });
 
-  if (fetching) {
+  const handleFollowChange = useCallback(() => {
+    onFollowChange();
+    refetch({ requestPolicy: refetcnPoicy });
+  }, [onFollowChange, refetch]);
+
+  if (fetching && !data) {
     return <p className="p-6 text-center text-muted">読み込み中...</p>;
   }
 
@@ -165,7 +184,7 @@ function FollowingTab({
           key={user.id}
           user={user}
           currentUserId={currentUserId}
-          onFollowChange={onFollowChange}
+          onFollowChange={handleFollowChange}
         />
       ))}
     </div>
