@@ -281,7 +281,6 @@ impl MutationRoot {
         Ok(true)
     }
 
-    /// ユーザーをフォロー
     async fn follow_user(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<bool> {
         let db = ctx.data::<Db>()?;
         let follower_id = ctx.data::<Uuid>()?;
@@ -313,7 +312,6 @@ impl MutationRoot {
             return Err(async_graphql::Error::new("Already following this user"));
         }
 
-        // フォローを作成
         let created_at = Utc::now().to_rfc3339();
         sqlx::query("INSERT INTO follows (follower_id, following_id, created_at) VALUES (?, ?, ?)")
             .bind(follower_id)
@@ -325,7 +323,6 @@ impl MutationRoot {
         Ok(true)
     }
 
-    /// ユーザーのフォローを解除
     async fn unfollow_user(&self, ctx: &Context<'_>, user_id: Uuid) -> Result<bool> {
         let db = ctx.data::<Db>()?;
         let follower_id = ctx.data::<Uuid>()?;
